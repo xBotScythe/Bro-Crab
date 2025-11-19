@@ -146,7 +146,7 @@ class HotTakes(commands.Cog):
         lines = []
         for msg_id, info in ranked[:10]:
             lines.append(
-                f"**{info['score']}** — {info['take']} *(by <@{info['author']}>)*↑ {info['up']}  ↓ {info['down']}"
+                f"**{info['score']}** — {info['take']} *(by <@{info['author']}>)*\n↑ {info['up']}  ↓ {info['down']}"
             )
 
         output = "\n\n".join(lines)
