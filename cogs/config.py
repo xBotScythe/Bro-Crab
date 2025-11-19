@@ -319,5 +319,6 @@ class Config(commands.Cog):
   
         await interaction.response.send_message("Added flavor(s)!")
 
+
 async def setup(bot):
     await bot.add_cog(Config(bot))

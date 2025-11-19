@@ -91,15 +91,21 @@ class Replies(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @app_commands.context_menu(name="Reply as Bro Crab")
+    async def reply_ctx(self, interaction: discord.Interaction, message: discord.Message):
+
+        # permission check
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message(
+                "Sorry bro, you're not cool enough to use this.",
+                ephemeral=True
+            )
+            return
+
+        modal = ReplyModal(message)
+        await interaction.response.send_modal(modal)
+
 
 # Setup
 async def setup(bot: commands.Bot):
     await bot.add_cog(Replies(bot))
-
-    # register context menu using the factory
-    bot.tree.add_command(
-        app_commands.ContextMenu(
-            name="Reply as Bro Crab",
-            callback=make_reply_callback(bot)  # bot is now passed correctly
-        )
-    )
