@@ -17,6 +17,7 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
         style=discord.TextStyle.paragraph,
         max_length=500
     )
+    # optional image input
     image_url = discord.ui.TextInput(
         label="Image URL (optional)",
         placeholder="https://example.com/image.png",
