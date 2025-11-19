@@ -1,3 +1,8 @@
+import os
+from io import BytesIO
+from urllib.parse import urlparse
+
+import aiohttp
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -12,13 +17,53 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
         style=discord.TextStyle.paragraph,
         max_length=500
     )
+    image_url = discord.ui.TextInput(
+        label="Image URL (optional)",
+        placeholder="https://example.com/image.png",
+        style=discord.TextStyle.short,
+        required=False,
+        max_length=400,
+    )
 
     def __init__(self, target_message: discord.Message):
         super().__init__()
         self.target_message = target_message
 
+    async def _download_image(self, url: str) -> discord.File:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        raise ValueError("Couldn't download that image (bad status).")
+                    content_type = resp.headers.get("Content-Type", "") or ""
+                    if "image" not in content_type.lower():
+                        raise ValueError("That link doesn't point to an image.")
+                    data = await resp.read()
+            except aiohttp.ClientError:
+                raise ValueError("Failed to download image. Check the link and try again.")
+
+        parsed = urlparse(url)
+        filename = os.path.basename(parsed.path)
+        base, ext = os.path.splitext(filename)
+        if not ext:
+            ext = ".png"
+        if not base:
+            base = "image"
+        return discord.File(BytesIO(data), filename=f"{base}{ext}")
+
     async def on_submit(self, interaction: discord.Interaction):
-        await self.target_message.reply(self.reply_text.value)
+        file = None
+        image_link = self.image_url.value.strip()
+        if image_link:
+            try:
+                file = await self._download_image(image_link)
+            except ValueError as exc:
+                await interaction.response.send_message(str(exc), ephemeral=True)
+                return
+
+        await self.target_message.reply(self.reply_text.value, file=file)
+        if file:
+            file.close()
         await interaction.response.send_message("Reply sent!", ephemeral=True)
 
 
