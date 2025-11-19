@@ -61,6 +61,7 @@ async def update_single_user(bot, member: discord.Member):
         
 
 async def load_users(bot: commands.Bot):
+    await bot.wait_until_ready()
     # ensure data directory exists
     os.makedirs("data", exist_ok=True)
 

@@ -34,14 +34,6 @@ class xBot(commands.Bot):
         #  Sync slash commands 
         await self.sync_commands()
 
-        #  Start background tasks 
-        refresh_booster_data.start()
-        print("Booster data task started.")
-
-        #  Load booster data at startup 
-        await boost_m.load_users(self)
-        print("Initial booster data loaded.")
-
     async def sync_commands(self):
         """Try to sync slash commands to a dev guild first, fallback to global."""
         DEV_GUILD_ID = os.getenv("DEV_GUILD_ID")  # optional for dev testing
@@ -66,6 +58,12 @@ bot = xBot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"Logged in as {bot.user} ({bot.user.id})")
     print("--")
+    #  Start background tasks 
+    if not refresh_booster_data.is_running():
+        refresh_booster_data.start()
+
+    # Run initial sync *once*
+    asyncio.create_task(boost_m.load_users(bot))
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
