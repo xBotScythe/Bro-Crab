@@ -6,13 +6,12 @@ import discord
 from discord import app_commands, SelectOption
 from discord.ext import commands
 from discord.ui import View, Select
-import random, asyncio
+import random, asyncio, json, os
 from datetime import datetime, timedelta, timezone
 from utils.booster_manager import check_boost_status
 from utils.quote_manager import load_quotes
 from utils.vote_manager import load_votes, update_tierlist_message, get_votes_from_user_data
 from utils.cooldown_manager import *
-from utils.json_manager import load_json_async, write_json_async
 
 class Games(commands.Cog):
     """
@@ -73,7 +72,7 @@ class Games(commands.Cog):
         
     # autocomplete callback for flavor choices
     async def flavor_autocomplete(self, interaction: discord.Interaction, current: str):
-        flavors = await load_votes(interaction.guild_id)
+        flavors = load_votes(interaction.guild_id)
         return [
             app_commands.Choice(name=flavor, value=flavor)
             for flavor in list(flavors.keys()) if current.lower() in flavor.lower()
@@ -129,8 +128,9 @@ class Games(commands.Cog):
         await interaction.response.defer(ephemeral=False)
 
         # load roast data
-        roast_dict = await load_json_async("data/roasts.json")
-        roasts = roast_dict.get("roasts", [])
+        with open("data/roasts.json", "r") as f:
+            roast_dict = json.load(f)
+        roasts = roast_dict["roasts"]
 
         # decide if we do the message-count-based roast (~7.5% chance)
         if random.random() < 0.075:
@@ -220,35 +220,42 @@ class Games(commands.Cog):
             time_left = await get_remaining_cooldown(interaction, COOLDOWN_TIME)
             await interaction.response.send_message(f"You already voted! Try again in {time_left}.", ephemeral=True)
             return
-        data = await load_json_async("data/server_data.json")
-        guild_id = str(interaction.guild_id)
-        prev_score = data[guild_id]["vote_items"][flavor]["total_score"]
-        if prev_score is None:
-            prev_score = 0
-        data[guild_id]["vote_items"][flavor]["vote_num"] += 1
-        data[guild_id]["vote_items"][flavor]["total_score"] += score
-        data[guild_id]["vote_items"][flavor]["score"] = (
-            data[guild_id]["vote_items"][flavor]["total_score"]
-            / data[guild_id]["vote_items"][flavor]["vote_num"]
-        )
-        await write_json_async(data, "data/server_data.json")
+        with open("data/server_data.json", "r+") as f:
+            data = json.load(f)
+            guild_id = str(interaction.guild_id)
+            # save to vote item data
+            prev_score = data[guild_id]["vote_items"][flavor]["total_score"]
+            if(prev_score is None):
+                prev_score = 0
+            data[guild_id]["vote_items"][flavor]["vote_num"] += 1
+            data[guild_id]["vote_items"][flavor]["total_score"] += score
+            data[guild_id]["vote_items"][flavor]["score"] = (data[guild_id]["vote_items"][flavor]["total_score"] / data[guild_id]["vote_items"][flavor]["vote_num"])
+            f.seek(0)
+            json.dump(data, f, indent=4) # saves to file
+            f.truncate()
 
         # saves vote data to server's user data
-        data = await load_json_async("data/user_data.json")
-        guild_id = str(interaction.guild_id)
-        user_id = str(interaction.user.id)
-        if guild_id not in data:
-            data[guild_id] = {}
-        if user_id not in data[guild_id]:
-            data[guild_id][user_id] = {}
-        if "votes" not in data[guild_id][user_id]:
-            data[guild_id][user_id]["votes"] = {}
-        if flavor not in data[guild_id][user_id]["votes"]:
-            data[guild_id][user_id]["votes"][flavor] = []
-        data[guild_id][user_id]["votes"][flavor].append(
-            {"score": score, "time_created": interaction.created_at.isoformat()}
-        )
-        await write_json_async(data, "data/user_data.json")
+        with open("data/user_data.json", "r+") as f:
+            data = json.load(f)
+            guild_id = str(interaction.guild_id)
+            user_id = str(interaction.user.id)
+            # save to user data
+            if guild_id not in data:
+                data[guild_id] = {}
+            if user_id not in data[guild_id]:
+                data[guild_id][user_id] = {}
+            if "votes" not in data[guild_id][user_id]:
+                data[guild_id][user_id]["votes"] = {}
+            if flavor not in data[guild_id][user_id]["votes"]:
+                data[guild_id][user_id]["votes"][flavor] = []
+            # appends score and time to vote list
+            data[guild_id][user_id]["votes"][flavor].append({
+                "score": score,
+                "time_created": interaction.created_at.isoformat()
+            })
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()
         await update_tierlist_message(self.bot, interaction.guild_id)
         await interaction.response.send_message(f"You voted **{score}/10** for **{flavor}**!", ephemeral=True)
         await set_cooldown(interaction)

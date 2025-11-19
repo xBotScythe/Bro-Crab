@@ -3,10 +3,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import View, Button
-import asyncio, random, os
+import asyncio, random, os, json
 from typing import Optional
-
-from utils.json_manager import load_json
 
 MAX_HP = 30
 DATA_FILE = "data/server_data.json"
@@ -101,8 +99,9 @@ class Duel(commands.Cog):
         self.flavors = {}
         if os.path.exists(DATA_FILE):
             try:
-                data = load_json(DATA_FILE)
-                self.flavors = data.get(str(guild_id), {}).get("flavor_roles", {})
+                with open(DATA_FILE, "r") as f:
+                    data = json.load(f)
+                    self.flavors = data.get(str(guild_id), {}).get("flavor_roles", {})
             except Exception as e:
                 print("Error loading server_data.json:", e)
 

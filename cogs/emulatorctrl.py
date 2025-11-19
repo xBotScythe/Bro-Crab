@@ -1,15 +1,19 @@
-import discord
+import discord, asyncio, json
 from discord import app_commands
 from discord.ext import commands
-from utils.emulator_manager import EmulatorController, send_press_sequence_remote
-from utils.json_manager import load_json_async, write_json_async
+from utils.emulator_manager import EmulatorController, send_press_remote, send_press_sequence_remote
+
+USER_DATA_LOCK = asyncio.Lock()
 
 async def read_user_data():
-    return await load_json_async("data/user_data.json")
-
+    async with USER_DATA_LOCK:
+        # read JSON safely in thread
+        return await asyncio.to_thread(lambda: json.load(open("data/user_data.json", "r")))
 
 async def write_user_data(data):
-    await write_json_async(data, "data/user_data.json")
+    async with USER_DATA_LOCK:
+        await asyncio.to_thread(lambda: json.dump(data, open("data/user_data.json", "w"), indent=4))
+
 
 
 class EmulatorCtrl(commands.Cog):
