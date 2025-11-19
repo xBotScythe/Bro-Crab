@@ -9,7 +9,7 @@ from discord import app_commands
 from utils.admin_manager import check_admin_status
 
 
-# Modal for Bro Crab reply
+# modal
 class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
     reply_text = discord.ui.TextInput(
         label="Your reply",
@@ -17,7 +17,7 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
         style=discord.TextStyle.paragraph,
         max_length=500
     )
-    # optional image input
+
     image_url = discord.ui.TextInput(
         label="Image URL (optional)",
         placeholder="https://example.com/image.png",
@@ -36,10 +36,13 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         raise ValueError("Couldn't download that image (bad status).")
+
                     content_type = resp.headers.get("Content-Type", "") or ""
                     if "image" not in content_type.lower():
                         raise ValueError("That link doesn't point to an image.")
+
                     data = await resp.read()
+
             except aiohttp.ClientError:
                 raise ValueError("Failed to download image. Check the link and try again.")
 
@@ -50,14 +53,16 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
             ext = ".png"
         if not base:
             base = "image"
+
         return discord.File(BytesIO(data), filename=f"{base}{ext}")
 
     async def on_submit(self, interaction: discord.Interaction):
         file = None
-        image_link = self.image_url.value.strip()
-        if image_link:
+        img_url = self.image_url.value.strip()
+
+        if img_url:
             try:
-                file = await self._download_image(image_link)
+                file = await self._download_image(img_url)
             except ValueError as exc:
                 await interaction.response.send_message(str(exc), ephemeral=True)
                 return
@@ -68,44 +73,33 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
         await interaction.response.send_message("Reply sent!", ephemeral=True)
 
 
-# return callback with bot included
-def make_reply_callback(bot):
-    async def reply_as_bro_crab(interaction: discord.Interaction, message: discord.Message):
+async def reply_as_bro_crab(interaction: discord.Interaction, message: discord.Message):
+    bot = interaction.client  # reliable reference to the bot
 
-        # now call admin check 
-        if not await check_admin_status(bot, interaction):
-            await interaction.response.send_message(
-                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
-                ephemeral=True
-            )
-            return
+    # admin check
+    if not await check_admin_status(bot, interaction):
+        await interaction.response.send_message(
+            "Sorry bro, you're not cool enough to use this.",
+            ephemeral=True
+        )
+        return
 
-        modal = ReplyModal(message)
-        await interaction.response.send_modal(modal)
-
-    return reply_as_bro_crab  # closure with bot captured
+    modal = ReplyModal(message)
+    await interaction.response.send_modal(modal)
 
 
-# Cog (empty)
 class Replies(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.context_menu(name="Reply as Bro Crab")
-    async def reply_ctx(self, interaction: discord.Interaction, message: discord.Message):
 
-        # permission check
-        if not await check_admin_status(self.bot, interaction):
-            await interaction.response.send_message(
-                "Sorry bro, you're not cool enough to use this.",
-                ephemeral=True
-            )
-            return
-
-        modal = ReplyModal(message)
-        await interaction.response.send_modal(modal)
-
-
-# Setup
+# setup
 async def setup(bot: commands.Bot):
     await bot.add_cog(Replies(bot))
+
+    bot.tree.add_command(
+        app_commands.ContextMenu(
+            name="Reply as Bro Crab",
+            callback=reply_as_bro_crab
+        )
+    )
