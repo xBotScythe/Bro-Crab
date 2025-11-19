@@ -1,32 +1,34 @@
+import asyncio
 import os
 from io import BytesIO
 from urllib.parse import urlparse
 
 import aiohttp
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord.ext import commands
+
 from utils.admin_manager import check_admin_status
 
 
-# Modal for Bro Crab reply
 class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
     reply_text = discord.ui.TextInput(
-        label="Your reply",
-        placeholder="Type your message...",
+        label="your reply",
+        placeholder="type your message...",
         style=discord.TextStyle.paragraph,
-        max_length=500
+        max_length=500,
     )
-    image_url = discord.ui.TextInput(
-        label="Image URL (optional)",
-        placeholder="https://example.com/image.png",
+    image_input = discord.ui.TextInput(
+        label="image url or type 'upload' (optional)",
+        placeholder="https://example.com/image.png or upload",
         style=discord.TextStyle.short,
         required=False,
         max_length=400,
     )
 
-    def __init__(self, target_message: discord.Message):
+    def __init__(self, bot: commands.Bot, target_message: discord.Message):
         super().__init__()
+        self.bot = bot
         self.target_message = target_message
 
     async def _download_image(self, url: str) -> discord.File:
@@ -34,13 +36,13 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
             try:
                 async with session.get(url) as resp:
                     if resp.status != 200:
-                        raise ValueError("Couldn't download that image (bad status).")
-                    content_type = resp.headers.get("Content-Type", "") or ""
-                    if "image" not in content_type.lower():
-                        raise ValueError("That link doesn't point to an image.")
+                        raise ValueError("couldn't download that image (bad status).")
+                    content_type = (resp.headers.get("Content-Type") or "").lower()
+                    if "image" not in content_type:
+                        raise ValueError("that link doesn't point to an image.")
                     data = await resp.read()
             except aiohttp.ClientError:
-                raise ValueError("Failed to download image. Check the link and try again.")
+                raise ValueError("failed to download image. check the link and try again.")
 
         parsed = urlparse(url)
         filename = os.path.basename(parsed.path)
@@ -51,54 +53,94 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
             base = "image"
         return discord.File(BytesIO(data), filename=f"{base}{ext}")
 
+    def _attachment_is_image(self, attachment: discord.Attachment) -> bool:
+        if attachment.content_type:
+            return "image" in attachment.content_type.lower()
+        _, ext = os.path.splitext(attachment.filename or "")
+        return ext.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+    async def _collect_uploaded_file(self, interaction: discord.Interaction) -> discord.File:
+        await interaction.followup.send(
+            "upload the image in this channel within 60 seconds. i'll grab the first attachment.",
+            ephemeral=True,
+        )
+
+        def check(msg: discord.Message):
+            return (
+                msg.author.id == interaction.user.id
+                and msg.channel == self.target_message.channel
+                and msg.attachments
+            )
+
+        try:
+            upload_msg = await self.bot.wait_for("message", timeout=60, check=check)
+        except asyncio.TimeoutError:
+            raise ValueError("no attachment received in time.")
+
+        attachment = next(
+            (att for att in upload_msg.attachments if self._attachment_is_image(att)),
+            None,
+        )
+        if not attachment:
+            raise ValueError("please upload at least one image file.")
+
+        data = await attachment.read()
+        file = discord.File(BytesIO(data), filename=attachment.filename or "image.png")
+
+        try:
+            await upload_msg.delete()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        return file
+
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         file = None
-        image_link = self.image_url.value.strip()
-        if image_link:
-            try:
-                file = await self._download_image(image_link)
-            except ValueError as exc:
-                await interaction.response.send_message(str(exc), ephemeral=True)
-                return
+        image_value = self.image_input.value.strip()
 
-        await self.target_message.reply(self.reply_text.value, file=file)
-        if file:
-            file.close()
-        await interaction.response.send_message("Reply sent!", ephemeral=True)
+        try:
+            if image_value and image_value.lower() == "upload":
+                file = await self._collect_uploaded_file(interaction)
+            elif image_value:
+                file = await self._download_image(image_value)
+
+            await self.target_message.reply(self.reply_text.value, file=file)
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+        finally:
+            if file:
+                file.close()
+
+        await interaction.followup.send("reply sent!", ephemeral=True)
 
 
-# return callback with bot included
-def make_reply_callback(bot):
+def make_reply_callback(bot: commands.Bot):
     async def reply_as_bro_crab(interaction: discord.Interaction, message: discord.Message):
-
-        # now call admin check 
         if not await check_admin_status(bot, interaction):
             await interaction.response.send_message(
-                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
-                ephemeral=True
+                "sorry bro, you're not cool enough to use this. ask a mod politely maybe?",
+                ephemeral=True,
             )
             return
 
-        modal = ReplyModal(message)
+        modal = ReplyModal(bot, message)
         await interaction.response.send_modal(modal)
 
-    return reply_as_bro_crab  # closure with bot captured
+    return reply_as_bro_crab
 
 
-# Cog (empty)
 class Replies(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
 
-# Setup
 async def setup(bot: commands.Bot):
     await bot.add_cog(Replies(bot))
 
-    # register context menu using the factory
     bot.tree.add_command(
         app_commands.ContextMenu(
             name="Reply as Bro Crab",
-            callback=make_reply_callback(bot)  # bot is now passed correctly
+            callback=make_reply_callback(bot),
         )
     )
