@@ -14,8 +14,6 @@ if not TOKEN:
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-intents.guilds = True
-intents.presences = True
 
 class xBot(commands.Bot):
     def __init__(self):
