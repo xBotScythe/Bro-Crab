@@ -1,41 +1,58 @@
-import os
-
+import json
 import discord
+import os, asyncio
 from discord.ext import commands
-
-from utils.json_manager import (
-    load_json,
-    load_json_async,
-    write_json,
-)
 
 SERVER_FILE = "data/server_data.json"
 USER_FILE = "data/user_data.json"
+FILE_LOCK = asyncio.Lock()
+
+#  sync JSON helpers 
+def read_json(path=SERVER_FILE):
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return {}
 
 
+def write_json(data, path=SERVER_FILE):
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    os.replace(temp_path, path)  # atomic replacement
+
+
+#  Ensure user_data file exists 
 def check_user_data():
     if not os.path.exists(USER_FILE):
         write_json({}, USER_FILE)
         print("Created user_data.json file.")
 
 
-async def load_votes(guild_id: int):
-    data = await load_json_async(SERVER_FILE)
+#  Load votes 
+def load_votes(guild_id: int):
+    data = read_json(SERVER_FILE)
     return data.get(str(guild_id), {}).get("vote_items", {})
 
 
-async def load_user_data_votes(guild_id: int, user_id: int):
-    data = await load_json_async(USER_FILE)
+def load_user_data_votes(guild_id: int, user_id: int):
+    data = read_json(USER_FILE)
     return data.get(str(guild_id), {}).get(str(user_id), {}).get("votes", {})
 
 
+#  Reset votes 
 def reset_votes(guild_id: int):
-    data = load_json(SERVER_FILE)
+    # clear server vote data
+    data = read_json(SERVER_FILE)
     if str(guild_id) in data:
         data[str(guild_id)]["vote_items"] = {}
     write_json(data, SERVER_FILE)
 
-    u_data = load_json(USER_FILE)
+    # clear user_data votes
+    u_data = read_json(USER_FILE)
     guild_users = u_data.get(str(guild_id), {})
     for user_id in guild_users:
         guild_users[user_id]["votes"] = {}
@@ -43,8 +60,9 @@ def reset_votes(guild_id: int):
     write_json(u_data, USER_FILE)
 
 
-async def get_votes_from_user_data(guild_id: int):
-    data = await load_json_async(USER_FILE)
+#  Aggregate votes from user_data 
+def get_votes_from_user_data(guild_id: int):
+    data = read_json(USER_FILE)
     s_data = data.get(str(guild_id), {})
     vote_data = {}
 
@@ -53,16 +71,14 @@ async def get_votes_from_user_data(guild_id: int):
             if item_name not in vote_data:
                 vote_data[item_name] = []
             for vote in votes:
-                vote_data[item_name].append(
-                    {
-                        "score": vote["score"],
-                        "time_created": vote["time_created"],
-                        "voter": user_id,
-                    }
-                )
+                vote_data[item_name].append({
+                    "score": vote["score"],
+                    "time_created": vote["time_created"],
+                    "voter": user_id
+                })
     return vote_data
 
-
+#  Tierlist generation 
 def generate_tierlist_text(data: dict, guild_id: int):
     guild_id_str = str(guild_id)
     if guild_id_str not in data or "vote_items" not in data[guild_id_str]:
@@ -73,21 +89,15 @@ def generate_tierlist_text(data: dict, guild_id: int):
 
     for name, info in flavors.items():
         score = info.get("score")
-        if score is None:
+        if score is None:  # skip items with no score
             continue
         entry = (name, score)
-        if score >= 9:
-            tiers["S"].append(entry)
-        elif score >= 7.5:
-            tiers["A"].append(entry)
-        elif score >= 6:
-            tiers["B"].append(entry)
-        elif score >= 4.5:
-            tiers["C"].append(entry)
-        elif score >= 2.5:
-            tiers["D"].append(entry)
-        else:
-            tiers["F"].append(entry)
+        if score >= 9: tiers["S"].append(entry)
+        elif score >= 7.5: tiers["A"].append(entry)
+        elif score >= 6: tiers["B"].append(entry)
+        elif score >= 4.5: tiers["C"].append(entry)
+        elif score >= 2.5: tiers["D"].append(entry)
+        else: tiers["F"].append(entry)
 
     icons = ["🟣", "🔵", "🟢", "🟡", "🟠", "🔴"]
     output = "**DDD Flavor Tier List**\n"
@@ -97,7 +107,6 @@ def generate_tierlist_text(data: dict, guild_id: int):
         output += f"\n**━═━═━═━┤{icon} {tier} Tier├━═━═━═━**\n"
         output += ", ".join(name for name, _ in entries) if entries else "_(empty)_"
     return output
-
 
 def generate_user_tierlist_text(vote_data: dict, interaction: discord.Interaction):
     if not vote_data:
@@ -113,9 +122,11 @@ def generate_user_tierlist_text(vote_data: dict, interaction: discord.Interactio
         if not votes_list:
             continue
 
+        # calculate average score for this flavor
         avg_score = sum(vote["score"] for vote in votes_list) / len(votes_list)
         entry = (flavor, avg_score)
 
+        # assign to tier
         if avg_score >= 9:
             tiers["S"].append(entry)
         elif avg_score >= 7.5:
@@ -144,8 +155,10 @@ def generate_user_tierlist_text(vote_data: dict, interaction: discord.Interactio
     return output
 
 
+
+#  Tierlist message reference 
 def save_tierlist_reference(guild_id: int, msg_id: int):
-    data = load_json(SERVER_FILE)
+    data = read_json(SERVER_FILE)
     data.setdefault(str(guild_id), {}).setdefault("tierlist_channel", {})
     data[str(guild_id)]["tierlist_channel"]["message_id"] = msg_id
     write_json(data, SERVER_FILE)
@@ -153,10 +166,11 @@ def save_tierlist_reference(guild_id: int, msg_id: int):
 
 
 def get_tierlist_reference(guild_id: int):
-    data = load_json(SERVER_FILE)
+    data = read_json(SERVER_FILE)
     return data.get(str(guild_id), {}).get("tierlist_channel")
 
 
+#  Update tierlist message in Discord 
 async def update_tierlist_message(bot: commands.Bot, guild_id: int):
     ref = get_tierlist_reference(guild_id)
     if not ref:
@@ -174,11 +188,11 @@ async def update_tierlist_message(bot: commands.Bot, guild_id: int):
         print("Tierlist message no longer exists.")
         return
 
-    data = await load_json_async(SERVER_FILE)
+    data = read_json(SERVER_FILE)
     new_content = generate_tierlist_text(data, guild_id)
+    # if content exceeds 2000 chars, send as file
     if len(new_content) > 2000:
         from io import StringIO
-
         file = StringIO(new_content)
         await channel.send(file=discord.File(file, filename="tierlist.txt"))
     else:
