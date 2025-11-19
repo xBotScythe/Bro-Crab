@@ -2,8 +2,8 @@
 Manager for economy functions and features
 """
 
+import json, os
 from utils.cooldown_manager import *
-from utils.json_manager import load_json, write_json
 
 
 class EconomyManager:
@@ -13,10 +13,23 @@ class EconomyManager:
         self.user_data = self.load_user_data()
 
     def load_user_data(self):
-        return load_json(self.user_data_file)
+        if os.path.exists(self.user_data_file):
+            with open(self.user_data_file, "r") as f:
+                return json.load(f)
+        else:
+            return {}
 
     def save_user_data(self):
-        write_json(self.user_data, self.user_data_file)
+        # write to temp file then replace
+        tmp_path = f"{self.user_data_file}.tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(self.user_data, f, indent=4)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(tmp_path, self.user_data_file)
 
     def get_balance(self, user_id):
         user_id_str = str(user_id)

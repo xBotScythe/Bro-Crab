@@ -2,8 +2,7 @@ import time
 import discord
 from discord import ui
 import requests
-
-from utils.json_manager import load_json_async, write_json_async
+import json
 
 LAPTOP_IP = "100.66.147.4" # tailscale ip
 PORT = 7777  
@@ -55,7 +54,14 @@ class EmulatorController(ui.View):
             send_press_remote(cmd)
         except Exception as e:
             print(f"Error sending button: {e}")
-        data = await load_json_async(file_path)
+        # load existing data
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+        except Exception:
+            data = {}
 
         # ensure guild and user entries exist
         data.setdefault(guild_id, {})
@@ -64,7 +70,13 @@ class EmulatorController(ui.View):
         # increment button press count
         data[guild_id][user_id]["button_pressed_count"] = data[guild_id][user_id].get("button_pressed_count", 0) + 1
 
-        await write_json_async(data, file_path)
+        # write back safely
+        try:
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            print(f"Error writing JSON: {e}")
 
         #  silent ephemeral ack so buttons don't "spin" 
         await interaction.response.defer(ephemeral=True)
+

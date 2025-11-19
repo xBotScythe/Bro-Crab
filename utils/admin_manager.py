@@ -1,6 +1,5 @@
 import discord
-
-from utils.json_manager import load_json_async
+import json
 
 async def check_admin_status(bot, interaction: discord.Interaction):
     # check user to see if theyre allowed 
@@ -14,8 +13,10 @@ async def check_admin_status(bot, interaction: discord.Interaction):
         return False
 
 async def get_flavor_roles(interaction: discord.Interaction):
-    data = await load_json_async("data/server_data.json")
-    guild_id = str(interaction.guild_id)
-    return data.get(guild_id, {}).get("flavor_roles", {})
+    with open("data/server_data.json", "r+") as f:
+        data = json.load(f)
+        guild_id = str(interaction.guild_id)
+
+        return data[guild_id]["flavor_roles"]
 
     

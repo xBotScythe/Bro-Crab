@@ -1,5 +1,8 @@
-from utils.json_manager import load_json
-
+import json
 
 def load_auto_responses():
-    return load_json("data/server_data.json")
+    try:
+        with open("data/server_data.json") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}

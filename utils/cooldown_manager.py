@@ -1,9 +1,19 @@
-import discord
+import json, discord, os
 from datetime import datetime, timedelta, timezone
 
-from utils.json_manager import load_json_async, write_json_async
-
 DATA_PATH = "data/server_data.json"
+
+def _load_data():
+    # loads cooldown data from file, returns empty dict if file doesn't exist
+    if not os.path.exists(DATA_PATH):
+        return {}
+    with open(DATA_PATH, "r") as f:
+        return json.load(f)
+
+def _save_data(data):
+    # saves cooldown data to file
+    with open(DATA_PATH, "w") as f:
+        json.dump(data, f, indent=4)
 
 async def check_cooldown(interaction: discord.Interaction, seconds: int):
     # checks if user is on cooldown for a command in this guild
@@ -12,7 +22,7 @@ async def check_cooldown(interaction: discord.Interaction, seconds: int):
     command = interaction.command.name
     now = datetime.now(timezone.utc)
 
-    data = await load_json_async(DATA_PATH)
+    data = _load_data()
     guild_data = data.get(guild_id, {})
     cooldowns = guild_data.get("cooldowns", {})
     user_data = cooldowns.get(user_id, {})
@@ -31,7 +41,7 @@ async def set_cooldown(interaction):
     command = interaction.command.name
     now = datetime.now(timezone.utc).isoformat()
 
-    data = await load_json_async(DATA_PATH)
+    data = _load_data()
     data[guild_id] = data.get(guild_id, {})
     data[guild_id]["cooldowns"] = data[guild_id].get("cooldowns", {})
     if not isinstance(data[guild_id]["cooldowns"], dict):
@@ -39,7 +49,7 @@ async def set_cooldown(interaction):
     data[guild_id]["cooldowns"][user_id] = data[guild_id]["cooldowns"].get(user_id, {})
 
     data[guild_id]["cooldowns"][user_id][command] = now  # save current time as last used
-    await write_json_async(data, DATA_PATH)
+    _save_data(data)
 
 async def get_remaining_cooldown(interaction, seconds):
     # returns string of time left on cooldown, or None if not on cooldown
@@ -48,7 +58,7 @@ async def get_remaining_cooldown(interaction, seconds):
     command = interaction.command.name
     now = datetime.now(timezone.utc)
 
-    data = await load_json_async(DATA_PATH)
+    data = _load_data()
     guild_data = data.get(guild_id, {})
     cooldowns = guild_data.get("cooldowns", {})
     user_data = cooldowns.get(user_id, {})

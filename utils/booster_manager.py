@@ -1,14 +1,39 @@
 import discord
 from discord.ext import commands, tasks
+import json
 import os
+import asyncio 
 from dotenv import load_dotenv
-
-from utils.json_manager import load_json_async, write_json_async
 
 load_dotenv()
 
 FILE_PATH = "data/server_data.json"
 USER_FILE_PATH = "data/user_data.json"
+FILE_LOCK = asyncio.Lock()
+
+
+async def read_json_file(path):
+    """Safely read JSON data from a file."""
+    async with FILE_LOCK:
+        if not os.path.exists(path):
+            # if the file doesn't exist, return an empty structure
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from {path}. File might be corrupted or empty.")
+            return {}
+
+
+async def write_json_file(path, data):
+    """Safely write JSON data to a file in an atomic operation."""
+    async with FILE_LOCK:
+        # write to a temporary file first, then rename it
+        temp_path = f"{path}.tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        os.replace(temp_path, path) 
 
 
 
@@ -30,7 +55,7 @@ async def update_single_user(bot, member: discord.Member):
         print(f"Warning: One or more staff role IDs in ACCEPTABLE_CONFIG_ROLES do not exist in guild '{member.guild.name}' (ID: {member.guild.id}).")
 
     # read the data safely
-    data = await load_json_async(FILE_PATH)
+    data = await read_json_file(FILE_PATH)
     
     if guild_id not in data:
         data[guild_id] = {"boosters": [], "staff": []}
@@ -52,7 +77,7 @@ async def update_single_user(bot, member: discord.Member):
         staff.remove(member.id)
 
     # write the modified data safely
-    await write_json_async(data, FILE_PATH)
+    await write_json_file(FILE_PATH, data)
     
     # update the bot instance's internal data store
     bot.booster_data = data
@@ -61,22 +86,21 @@ async def update_single_user(bot, member: discord.Member):
         
 
 async def load_users(bot: commands.Bot):
-    await bot.wait_until_ready()
     # ensure data directory exists
     os.makedirs("data", exist_ok=True)
 
     # create files if they don't exist
     if not os.path.exists(FILE_PATH):
-        await write_json_async({}, FILE_PATH)
+        await write_json_file(FILE_PATH, {})
         print("Created server_data.json file.")
     
     if not os.path.exists(USER_FILE_PATH):
-        await write_json_async({}, USER_FILE_PATH)
+        await write_json_file(USER_FILE_PATH, {})
         print("Created user_data.json file.")
     
     try:
         # read the data safely
-        data = await load_json_async(FILE_PATH)
+        data = await read_json_file(FILE_PATH)
 
         guilds = bot.guilds
         for guild in guilds:
@@ -118,7 +142,7 @@ async def load_users(bot: commands.Bot):
             print(f"Synced guild {guild.name} with boosters and staff.")
 
         # write the entire updated dictionary back to the file safely
-        await write_json_async(data, FILE_PATH)
+        await write_json_file(FILE_PATH, data)
         bot.booster_data = data
             
     except ValueError as e:
