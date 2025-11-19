@@ -56,12 +56,6 @@ async def on_ready():
 
 
 @bot.event
-async def on_interaction(interaction):
-    print("Received interaction:", interaction.data.get("name"))
-
-
-
-@bot.event
 async def on_member_update(before, after):
     try:
         await boost_m.update_single_user(bot, after)
