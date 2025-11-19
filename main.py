@@ -58,7 +58,6 @@ async def on_ready():
 @bot.event
 async def on_interaction(interaction):
     print("Received interaction:", interaction.data.get("name"))
-    await bot.process_application_commands(interaction)
 
 
 
