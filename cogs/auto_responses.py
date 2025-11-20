@@ -25,7 +25,7 @@ class AutoResponses(commands.Cog):
                 trigger = auto_react["content"].lower().strip()
                 msg = message.content.lower().strip()
 
-                if msg in trigger:
+                if trigger in msg:
                     emoji_raw = auto_react["emoji"]
 
                     # custom emoji format: <:name:id>
