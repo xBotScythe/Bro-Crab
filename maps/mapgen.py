@@ -8,7 +8,7 @@ from folium.plugins import MarkerCluster, MiniMap, Fullscreen
 from utils.dew_map_manager import prune_expired_finds
 
 DB_PATH = os.path.join("data", "dew_map.db")
-OUTPUT_PATH = os.path.join("maps", "dew_finds_map.html")
+OUTPUT_PATH = os.path.join("maps", "index.html")
 DEFAULT_CENTER = [39.8283, -98.5795]
 DEFAULT_ZOOM = 4
 
