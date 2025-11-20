@@ -360,4 +360,31 @@ class Config(commands.Cog):
         await interaction.response.send_message("Added flavor(s)!")
 
 async def setup(bot):
-    await bot.add_cog(Config(bot))
+    await bot.add_cog(Config(bot))    @app_commands.command(name="convertrole", description="Convert users from the old role to the new role")
+    async def convertrole(self, interaction: discord.Interaction):
+        if not await admin_m.check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
+            return
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only command.", ephemeral=True)
+            return
+
+        old_role_id = 1109541791054696460
+        new_role_id = 462854714682376192
+        old_role = guild.get_role(old_role_id)
+        new_role = guild.get_role(new_role_id)
+        if not old_role or not new_role:
+            await interaction.response.send_message("Unable to locate one of the roles.", ephemeral=True)
+            return
+
+        converted = 0
+        for member in old_role.members:
+            try:
+                await member.remove_roles(old_role, reason="Role conversion")
+                await member.add_roles(new_role, reason="Role conversion")
+                converted += 1
+            except discord.HTTPException:
+                continue
+
+        await interaction.response.send_message(f"Converted {converted} members to the new role.", ephemeral=True)
