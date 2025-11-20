@@ -369,8 +369,8 @@ class Config(commands.Cog):
             await interaction.response.send_message("Guild only command.", ephemeral=True)
             return
 
-        old_role_id = os.getenv("BOT_SELF_ROLE_ID")
-        new_role_id = os.getenv("DEFAULT_ROLE_ID")
+        old_role_id = int(os.getenv("BOT_SELF_ROLE_ID"))
+        new_role_id = int(os.getenv("DEFAULT_ROLE_ID"))
         old_role = guild.get_role(old_role_id)
         new_role = guild.get_role(new_role_id)
         if not old_role or not new_role:
