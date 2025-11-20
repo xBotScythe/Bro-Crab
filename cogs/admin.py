@@ -117,7 +117,7 @@ class Admin(commands.Cog):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
 
-    @app_commands.command(name="boomer", description="Start or end the boomer workflow for a member.")
+    @app_commands.command(name="boomer", description="Start or end the boomer process for a member.")
     @app_commands.describe(
         user="Member to act on.",
         action="Choose 'start' to strip roles, 'end' to restore them."
@@ -231,7 +231,6 @@ class Admin(commands.Cog):
             color=discord.Color.orange(),
             timestamp=timestamp,
         )
-        embed.add_field(name="Server", value=interaction.guild.name if interaction.guild else "Unknown", inline=False)
         embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
 
         dm_sent = True
