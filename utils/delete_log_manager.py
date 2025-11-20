@@ -59,6 +59,10 @@ async def log_deleted_message(bot, message):
 
     sent_message = await channel.send(embed=embed)
 
+    deleter = await _infer_deleter(message)
+    if not deleter or deleter.id == message.author.id:
+        return
+
     warn_result = await _review_with_llm(message)
     if not warn_result:
         return
@@ -90,6 +94,30 @@ async def _resolve_log_channel(bot):
         return fetched if isinstance(fetched, discord.TextChannel) else None
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         return None
+
+
+async def _infer_deleter(message):
+    guild = message.guild
+    if guild is None:
+        return None
+    me = guild.me
+    if not (me and me.guild_permissions.view_audit_log):
+        return None
+    try:
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_delete):
+            target = getattr(entry, "target", None)
+            if not target or target.id != message.author.id:
+                continue
+            extra = getattr(entry, "extra", None)
+            extra_channel = getattr(extra, "channel", None) if extra else None
+            if extra_channel and extra_channel.id != message.channel.id:
+                continue
+            if (discord.utils.utcnow() - entry.created_at).total_seconds() > 15:
+                continue
+            return entry.user
+    except (discord.Forbidden, discord.HTTPException):
+        return None
+    return None
 
 
 def _prepare_payload(message: discord.Message):
