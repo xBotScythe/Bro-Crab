@@ -49,7 +49,7 @@ async def log_deleted_message(bot: discord.Client, message: discord.Message):
     if channel is None:
         return
 
-    warn_result = await _review_with_llm(message, SERVER_RULES)
+    warn_result = await _review_with_llm(message)
     embed = discord.Embed(
         title="Message Deleted",
         color=discord.Color.red(),
