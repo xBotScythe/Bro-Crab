@@ -7,9 +7,9 @@ HELP_PAGES = [
         "Fun Commands",
         [
             ("/blackjack", "play blackjack with bro crab"),
-            ("/gamble", "risk coins for bigger stacks"),
-            ("/toast", "send the classic bread message"),
-            ("/checkbalance", "peek at your balance"),
+            ("/gamble", "lets go gambling!"),
+            ("/toast", "toast :)"),
+            ("/checkbalance", "look at your balance"),
             ("/roast", "roast yourself (or a friend if youre cool)"),
             ("/recall", "pull quotes saved via save quote"),
             ("/controller", "open the DDD Plays Pokemon controller"),
@@ -103,7 +103,7 @@ class Help(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="help", description="Show paginated help embeds")
+    @app_commands.command(name="help", description="Command list!")
     async def help(self, interaction: discord.Interaction):
         view = HelpView(HELP_PAGES)
         await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
