@@ -4,6 +4,7 @@ from datetime import datetime
 import discord
 
 WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL_ID", "0") or 0)
+BOT_SELF_ROLE_ID = int(os.getenv("BOT_SELF_ROLE_ID", "0") or 0)
 
 
 async def handle_member_join(bot: discord.Client, member: discord.Member):
@@ -38,3 +39,19 @@ async def handle_member_join(bot: discord.Client, member: discord.Member):
     embed.set_footer(text=datetime.utcnow().strftime("%m/%d/%y, %I:%M %p"))
 
     await channel.send(embed=embed)
+
+
+# kick users who grab the "i am a bot" role
+async def enforce_bot_flag(before: discord.Member, after: discord.Member):
+    if not BOT_SELF_ROLE_ID:
+        return
+    before_roles = {role.id for role in before.roles}
+    after_roles = {role.id for role in after.roles}
+    if BOT_SELF_ROLE_ID in before_roles:
+        return
+    if BOT_SELF_ROLE_ID not in after_roles:
+        return
+    try:
+        await after.kick(reason="Selected bot self-identify role")
+    except discord.HTTPException:
+        pass

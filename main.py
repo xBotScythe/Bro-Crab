@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from utils import booster_manager as boost_m
 from contextmenu.context import make_save_quote_command 
 from utils.delete_log_manager import log_deleted_message
-from utils.new_member_manager import handle_member_join
+from utils.new_member_manager import handle_member_join, enforce_bot_flag
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -75,6 +75,10 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         await boost_m.update_single_user(bot, after)
     except Exception as e:
         print(f"Error updating {after}: {e}")
+    try:
+        await enforce_bot_flag(before, after)
+    except Exception as e:
+        print(f"Failed to enforce bot flag on {after}: {e}")
 
 @bot.event
 async def on_member_join(member: discord.Member):
