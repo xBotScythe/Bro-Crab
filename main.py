@@ -77,10 +77,12 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 @bot.event
 async def on_message_delete(message):
-    # ignore messages deleted by the bot itself
     if message.author == bot.user:
         return
-    await log_deleted_message(bot, )
+    try:
+        await log_deleted_message(bot, message)
+    except Exception as e:
+        print(f"delete log failed for {message.id}: {e}")
 
 #  Background tasks 
 @tasks.loop(hours=6)
