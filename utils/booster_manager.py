@@ -62,6 +62,7 @@ async def update_single_user(bot, member: discord.Member):
 
     # boosters logic
     boosters = data[guild_id]["boosters"]
+    had_booster = member.id in boosters
     if booster_role in member.roles and member.id not in boosters:
         boosters.append(member.id)
     elif booster_role not in member.roles and member.id in boosters:
@@ -75,6 +76,10 @@ async def update_single_user(bot, member: discord.Member):
         staff.append(member.id)
     elif not is_staff and was_staff:
         staff.remove(member.id)
+
+    now_booster = member.id in boosters
+    if had_booster and not now_booster:
+        await _cleanup_boost_roles(member.guild, member.id, data)
 
     # write the modified data safely
     await write_json_file(FILE_PATH, data)
@@ -164,3 +169,25 @@ async def check_boost_status(bot, interaction: discord.Interaction):
         return True
     else:
         return False
+
+
+async def _cleanup_boost_roles(guild: discord.Guild, user_id: int, data: dict):
+    guild_id_str = str(guild.id)
+    guild_entry = data.get(guild_id_str, {})
+    boost_roles = guild_entry.get("boost_roles", [])
+    remaining = []
+
+    for entry in boost_roles:
+        if entry.get("user_id") == user_id:
+            role_id = entry.get("role_id")
+            role = guild.get_role(role_id) if role_id else None
+            if role:
+                try:
+                    await role.delete(reason="Booster lost status, removing Dewluxe role")
+                except discord.HTTPException:
+                    pass
+        else:
+            remaining.append(entry)
+
+    guild_entry["boost_roles"] = remaining
+    data[guild_id_str] = guild_entry

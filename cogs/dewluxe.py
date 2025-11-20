@@ -28,6 +28,19 @@ class Dewluxe(commands.Cog):
         data = await load_json_async(SERVER_FILE)
         guild_entry = data.setdefault(str(guild_id), {})
         boost_roles = guild_entry.setdefault("boost_roles", [])
+
+        for entry in boost_roles:
+            if entry["user_id"] == user_id:
+                entry.update(
+                    {
+                        "role_id": role.id,
+                        "role_name": role.name,
+                        "color": color_str,
+                    }
+                )
+                await write_json_async(data, SERVER_FILE)
+                return
+
         boost_roles.append(
             {
                 "role_id": role.id,
@@ -38,6 +51,15 @@ class Dewluxe(commands.Cog):
         )
         guild_entry["boost_roles"] = boost_roles
         await write_json_async(data, SERVER_FILE)
+
+    async def _get_existing_role(self, interaction: discord.Interaction):
+        data = await load_json_async(SERVER_FILE)
+        guild_entry = data.get(str(interaction.guild_id), {})
+        boost_roles = guild_entry.get("boost_roles", [])
+        for entry in boost_roles:
+            if entry.get("user_id") == interaction.user.id:
+                return interaction.guild.get_role(entry.get("role_id")), entry
+        return None, None
 
     @app_commands.command(name="dewluxe", description="Create a personal booster role with a custom name and color.")
     @app_commands.describe(role_name="Name for your role", color="Hex or Discord color name")
@@ -65,6 +87,17 @@ class Dewluxe(commands.Cog):
         existing = discord.utils.get(interaction.guild.roles, name=name)
         if existing:
             await interaction.followup.send("a role with that name already exists.", ephemeral=True)
+            return
+
+        existing_role, entry = await self._get_existing_role(interaction)
+        if existing_role:
+            try:
+                await existing_role.edit(name=name, color=parsed_color, reason="dewluxe role update")
+            except discord.HTTPException as exc:
+                await interaction.followup.send(f"failed to update role: {exc}", ephemeral=True)
+                return
+            await self._store_role(interaction.guild_id, interaction.user.id, existing_role, color)
+            await interaction.followup.send(f"updated {existing_role.mention}!", ephemeral=True)
             return
 
         try:
