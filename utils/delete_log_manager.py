@@ -96,41 +96,16 @@ async def _resolve_log_channel(bot):
         return None
 
 
-async def _infer_deleter(message):
-    guild = message.guild
-    if guild is None:
-        return None
-    me = guild.me
-    if not (me and me.guild_permissions.view_audit_log):
-        return None
-    try:
-        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_delete):
-            target = getattr(entry, "target", None)
-            if not target or target.id != message.author.id:
-                continue
-            extra = getattr(entry, "extra", None)
-            extra_channel = getattr(extra, "channel", None) if extra else None
-            if extra_channel and extra_channel.id != message.channel.id:
-                continue
-            if (discord.utils.utcnow() - entry.created_at).total_seconds() > 15:
-                continue
-            return entry.user
-    except (discord.Forbidden, discord.HTTPException):
-        return None
-    return None
-
-
-def _prepare_payload(message: discord.Message):
+def _prepare_payload(message):
     return {
+        "model": "local",
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are a moderator assistant for the DEW Drinker Discord. "
-                    "Review the deleted message against the provided server rules. "
-                    "Respond with 'yes' if a warning is recommended or 'no' if not. "
-                    "If yes, explain briefly why."
-                    f"\nServer rules:\n{SERVER_RULES}"
+                    "Review the deleted message. Respond yes/no with a short explanation.\n"
+                    f"Server rules:\n{SERVER_RULES}"
                 ),
             },
             {
@@ -145,7 +120,7 @@ def _prepare_payload(message: discord.Message):
         ],
         "temperature": 0,
         "max_tokens": 256,
-        "stream": False,
+        "stream": False
     }
 
 
@@ -153,7 +128,7 @@ async def _review_with_llm(message: discord.Message):
     async with aiohttp.ClientSession() as session:
         try:
             payload = _prepare_payload(message)
-            async with session.post(LLM_ENDPOINT, json=payload, timeout=20) as resp:
+            async with session.post(LLM_ENDPOINT, json=payload, timeout=10) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
         except Exception:
