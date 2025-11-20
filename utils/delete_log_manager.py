@@ -158,7 +158,7 @@ async def _review_with_llm(message: discord.Message):
     async with aiohttp.ClientSession() as session:
         try:
             payload = _prepare_payload(message)
-            async with session.post(LLM_ENDPOINT, json=payload, timeout=10) as resp:
+            async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
         except Exception:
