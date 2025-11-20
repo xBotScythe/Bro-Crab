@@ -61,7 +61,7 @@ class RoleLeaderboard(commands.Cog):
             count = sum(1 for member in interaction.guild.members if role in member.roles)
             role_counts.append((role, count))
 
-        # Sort largest → smallest
+        # Sort largest to smallest
         role_counts.sort(key=lambda r: r[1], reverse=True)
         # Build embeds (10 roles per page)
         pages = []

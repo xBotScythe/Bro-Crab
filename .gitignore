@@ -1,0 +1,14 @@
+*.json
+.env
+__pycache__/
+*.pyc
+*.bak
+*.lua
+venv/
+utils/__pycache__
+*.tmp
+contest.py
+contest_manager.py
+maps/__init__.py
+maps/dew_finds_map.html
+data/dew_map.db
