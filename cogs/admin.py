@@ -23,6 +23,8 @@ class Admin(commands.Cog):
         self.bot = bot
         boomer_role_id = os.getenv("BOOMER_ROLE_ID")
         self.boomer_role_id = int(boomer_role_id) if boomer_role_id and boomer_role_id.isdigit() else None
+        warn_channel_id = os.getenv("WARN_LOG_CHANNEL_ID")
+        self.warn_channel_id = int(warn_channel_id) if warn_channel_id and warn_channel_id.isdigit() else None
 
     async def _store_roles(self, guild_id: int, user_id: int, role_ids: List[int]):
         # track removed roles for future restore
@@ -101,6 +103,19 @@ class Admin(commands.Cog):
         archive_state["next_number"] = next_number + 1
         guild_entry["lightning_archive"] = archive_state
         await write_json_async(server_data, SERVER_DATA_FILE)
+
+    async def _get_warn_channel(self) -> Optional[discord.TextChannel]:
+        # resolve cross-server warn log channel
+        if not self.warn_channel_id:
+            return None
+        channel = self.bot.get_channel(self.warn_channel_id)
+        if channel and isinstance(channel, discord.TextChannel):
+            return channel
+        try:
+            fetched = await self.bot.fetch_channel(self.warn_channel_id)
+            return fetched if isinstance(fetched, discord.TextChannel) else None
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     @app_commands.command(name="boomer", description="Start or end the boomer workflow for a member.")
     @app_commands.describe(
@@ -197,6 +212,55 @@ class Admin(commands.Cog):
         if missing:
             summary += f" {len(missing)} roles were missing or higher than me and could not be restored."
         await interaction.followup.send(summary, ephemeral=True)
+
+    @app_commands.command(name="warn", description="Send a DM warning and log it.")
+    @app_commands.describe(user="member to warn", reason="short explanation for the warning")
+    async def warn(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message(
+                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+
+        timestamp = datetime.now(timezone.utc)
+        embed = discord.Embed(
+            title="You have been warned",
+            description=reason,
+            color=discord.Color.orange(),
+            timestamp=timestamp,
+        )
+        embed.add_field(name="Server", value=interaction.guild.name if interaction.guild else "Unknown", inline=False)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
+
+        dm_sent = True
+        try:
+            await user.send(embed=embed)
+        except discord.Forbidden:
+            dm_sent = False
+
+        log_channel = await self._get_warn_channel()
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Warning Issued",
+                color=discord.Color.orange(),
+                timestamp=timestamp,
+                description=f"{user.mention} warned by {interaction.user.mention}",
+            )
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            if interaction.guild:
+                log_embed.add_field(name="Origin Server", value=f"{interaction.guild.name} (`{interaction.guild.id}`)", inline=False)
+            log_embed.add_field(name="DM Sent", value="yes" if dm_sent else "no", inline=False)
+            try:
+                await log_channel.send(embed=log_embed)
+            except discord.HTTPException:
+                pass
+
+        feedback = f"Warned {user.mention}."
+        if not dm_sent:
+            feedback += " DM could not be delivered."
+        await interaction.followup.send(feedback, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
