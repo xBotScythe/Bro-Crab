@@ -122,7 +122,6 @@ async def _infer_deleter(message):
 
 def _prepare_payload(message: discord.Message):
     return {
-        "model": "local-review",
         "messages": [
             {
                 "role": "system",
@@ -145,6 +144,8 @@ def _prepare_payload(message: discord.Message):
             },
         ],
         "temperature": 0,
+        "max_tokens": 256,
+        "stream": False,
     }
 
 
@@ -152,7 +153,7 @@ async def _review_with_llm(message: discord.Message):
     async with aiohttp.ClientSession() as session:
         try:
             payload = _prepare_payload(message)
-            async with session.post(LLM_ENDPOINT, json=payload, timeout=10) as resp:
+            async with session.post(LLM_ENDPOINT, json=payload, timeout=20) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
         except Exception:
