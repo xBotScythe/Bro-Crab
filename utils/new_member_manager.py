@@ -53,5 +53,8 @@ async def enforce_bot_flag(before: discord.Member, after: discord.Member):
         return
     try:
         await after.kick(reason="Selected bot self-identify role")
+        channel = after.guild.get_channel(WELCOME_CHANNEL_ID)
+        if channel:
+            await channel.send(f"{after.mention} was removed for marking themselves as a bot.")
     except discord.HTTPException:
         pass
