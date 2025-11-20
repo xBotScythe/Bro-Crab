@@ -36,6 +36,36 @@ Contact the Staff Team
 If you'd like to submit a report, suggestion, or question to our team, please DM @unknown-role at the top of the right sidebar to activate Crabmail, which will let you forward your concerns to the right people on our staff team. We will discuss the situation with you and handle the situation as best we can.
 """
 
+async def _infer_deleter(message):
+    guild = message.guild
+    if guild is None:
+        return None
+
+    me = guild.me
+    if not (me and me.guild_permissions.view_audit_log):
+        return None
+
+    try:
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_delete):
+            target = getattr(entry, "target", None)
+            if not target or target.id != message.author.id:
+                continue
+
+            extra = getattr(entry, "extra", None)
+            ch = getattr(extra, "channel", None) if extra else None
+            if ch and ch.id != message.channel.id:
+                continue
+
+            # only recent deletes
+            if (discord.utils.utcnow() - entry.created_at).total_seconds() > 15:
+                continue
+
+            return entry.user
+    except (discord.Forbidden, discord.HTTPException):
+        return None
+
+    return None
+
 
 async def log_deleted_message(bot, message):
     # always log right away so we don't block
