@@ -100,7 +100,7 @@ class EmulatorCtrl(commands.Cog):
         for idx, (username, count) in enumerate(leaderboard[:10], start=1):
             msg += f"{idx}. **{username}** — {count} presses\n"
 
-        await interaction.response.send_message(msg)
+        await interaction.response.send_message(msg, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EmulatorCtrl(bot))
