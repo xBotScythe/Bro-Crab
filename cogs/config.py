@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import os, json, asyncio, random
 from utils.vote_manager import FILE_LOCK, generate_user_tierlist_text, SERVER_FILE, generate_tierlist_text, read_json, save_tierlist_reference, reset_votes, write_json, update_tierlist_message, load_votes
-from utils.bingo_manager import format_board_rows, mark_flavor, render_board
+from utils.bingo_manager import mark_flavor, render_board
 
 class Config(commands.Cog):
     """
@@ -164,21 +164,15 @@ class Config(commands.Cog):
             f.truncate()
         await update_tierlist_message(self.bot, interaction.guild_id)
         content = f"You voted **{score}/10** for **{flavor}**!"
-        embed = None
-        file = None
         if interaction.guild_id:
             changed, board = await mark_flavor(interaction.guild_id, interaction.user.id, flavor)
             if changed and board:
                 buffer = await asyncio.to_thread(render_board, board)
                 file = discord.File(buffer, filename="dew_bingo.png")
-                description = "\n".join(format_board_rows(board))
-                embed = discord.Embed(title="Bingo Board Updated", description=description, color=discord.Color.green())
-                embed.set_image(url="attachment://dew_bingo.png")
                 content = f"{content}\n~~{flavor}~~ crossed off your bingo board!"
-        if embed and file:
-            await interaction.response.send_message(content, embed=embed, file=file, ephemeral=True)
-        else:
-            await interaction.response.send_message(content, ephemeral=True)
+                await interaction.response.send_message(content, file=file, ephemeral=True)
+                return
+        await interaction.response.send_message(content, ephemeral=True)
 
     @ratedew.autocomplete("flavor")
     async def ratedew_autocomplete(self, interaction: discord.Interaction, current: str):

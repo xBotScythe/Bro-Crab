@@ -8,7 +8,7 @@ from timezonefinder import TimezoneFinder
 
 from utils.dew_map_manager import add_flavors, remove_flavors, list_flavors, create_find, update_find_image, delete_find
 from utils.admin_manager import check_admin_status
-from utils.bingo_manager import mark_flavor, format_board_rows, render_board
+from utils.bingo_manager import mark_flavor, render_board
 
 
 geolocator = Nominatim(user_agent="dew-map-bot")
@@ -155,12 +155,8 @@ class DewMap(commands.Cog):
             return
         buffer = await asyncio.to_thread(render_board, board)
         file = discord.File(buffer, filename="dew_bingo.png")
-        description = "\n".join(format_board_rows(board))
-        embed = discord.Embed(title="Bingo Board Updated", description=description, color=discord.Color.green())
-        embed.set_image(url="attachment://dew_bingo.png")
         await interaction.followup.send(
             content=f"~~{flavor_name}~~ crossed off your bingo board!",
-            embed=embed,
             file=file,
             ephemeral=True,
         )

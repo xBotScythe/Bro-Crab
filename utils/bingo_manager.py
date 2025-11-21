@@ -126,31 +126,31 @@ def _load_font(size: int):
 def render_board(board: Dict):
     size = board.get("size", 5)
     cells = board.get("cells", [])
-    margin = 40
-    gap = 10
-    base_cell = 220
-    cell_size = max(140, base_cell - (size - 3) * 25)
+    margin = 60
+    gap = 12
+    base_cell = 260
+    cell_size = max(180, base_cell - (size - 3) * 30)
     width = margin * 2 + size * cell_size + (size - 1) * gap
-    height = width + 120
+    height = width + 140
 
-    image = Image.new("RGB", (width, height), color=(14, 17, 23))
+    image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
-    title_font = _load_font(48)
-    subtitle_font = _load_font(24)
-    cell_font = _load_font(26 if size >= 5 else 32)
+    title_font = _load_font(64)
+    subtitle_font = _load_font(32)
+    cell_font = _load_font(36 if size >= 5 else 44)
 
     title = "Mountain Dew Bingo"
     title_bbox = title_font.getbbox(title)
     title_x = (width - (title_bbox[2] - title_bbox[0])) / 2
-    draw.text((title_x, 20), title, fill=(0, 255, 153), font=title_font)
+    draw.text((title_x, 30), title, fill=(0, 0, 0), font=title_font)
 
     subtitle = f"{size} × {size} Board"
     subtitle_bbox = subtitle_font.getbbox(subtitle)
     subtitle_x = (width - (subtitle_bbox[2] - subtitle_bbox[0])) / 2
-    draw.text((subtitle_x, 80), subtitle, fill=(200, 200, 200), font=subtitle_font)
+    draw.text((subtitle_x, 110), subtitle, fill=(60, 60, 60), font=subtitle_font)
 
-    board_top = 140
+    board_top = 190
     for index, cell in enumerate(cells):
         row, col = divmod(index, size)
         x0 = margin + col * (cell_size + gap)
@@ -158,47 +158,30 @@ def render_board(board: Dict):
         x1 = x0 + cell_size
         y1 = y0 + cell_size
 
-        fill_color = (31, 37, 51) if not cell.get("marked") else (38, 94, 74)
-        outline_color = (0, 255, 153) if cell.get("marked") else (60, 68, 88)
-        draw.rounded_rectangle((x0, y0, x1, y1), radius=18, fill=fill_color, outline=outline_color, width=3)
+        fill_color = (245, 245, 245) if not cell.get("marked") else (220, 235, 220)
+        outline_color = (0, 0, 0)
+        draw.rounded_rectangle((x0, y0, x1, y1), radius=22, fill=fill_color, outline=outline_color, width=4)
 
         label = cell.get("label", "")
-        lines = _wrap_text(label, cell_font, cell_size - 24)
+        lines = _wrap_text(label, cell_font, cell_size - 40)
         text = "\n".join(lines)
         text_bbox = draw.multiline_textbbox((0, 0), text, font=cell_font, align="center")
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         text_x = x0 + (cell_size - text_width) / 2
         text_y = y0 + (cell_size - text_height) / 2
-        draw.multiline_text((text_x, text_y), text, fill=(240, 240, 240), font=cell_font, align="center")
+        draw.multiline_text((text_x, text_y), text, fill=(0, 0, 0), font=cell_font, align="center")
 
         if cell.get("marked"):
             line_y = y0 + cell_size / 2
-            draw.line((x0 + 12, line_y, x1 - 12, line_y), fill=(255, 99, 132), width=5)
+            draw.line((x0 + 18, line_y, x1 - 18, line_y), fill=(200, 0, 0), width=8)
 
     updated_at = board.get("updated_at")
     if updated_at:
         stamp = f"Updated: {updated_at.split('T')[0]}"
-        draw.text((margin, height - 50), stamp, fill=(160, 160, 160), font=subtitle_font)
+        draw.text((margin, height - 60), stamp, fill=(80, 80, 80), font=subtitle_font)
 
     output = BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
     return output
-
-
-def format_board_rows(board: Dict):
-    size = board.get("size", 5)
-    rows = []
-    cells = board.get("cells", [])
-    for row in range(size):
-        start = row * size
-        line = []
-        for cell in cells[start : start + size]:
-            label = cell.get("label", "")
-            if cell.get("marked"):
-                line.append(f"~~{label}~~")
-            else:
-                line.append(label)
-        rows.append(" | ".join(line))
-    return rows
