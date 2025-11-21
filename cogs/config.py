@@ -105,6 +105,30 @@ class Config(commands.Cog):
             print(f"server_data vote items modified: Added {item_name}")
         await interaction.response.send_message(f"{item_name} added to the vote list!")
 
+    @app_commands.command(name="assignrolebyid", description="Give an existing role (by ID) to a user.")
+    async def assignrolebyid(self, interaction: discord.Interaction, member: discord.Member, role_id: str):
+        if not await admin_m.check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used inside a server.", ephemeral=True)
+            return
+        try:
+            parsed_role_id = int(role_id)
+        except ValueError:
+            await interaction.response.send_message("Role ID must be a number.", ephemeral=True)
+            return
+        role = interaction.guild.get_role(parsed_role_id)
+        if not role:
+            await interaction.response.send_message("Couldn't find a role with that ID in this server.", ephemeral=True)
+            return
+        try:
+            await member.add_roles(role, reason=f"Assigned via /assignrolebyid by {interaction.user}")
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(f"Failed to assign role: {exc}", ephemeral=True)
+            return
+        await interaction.response.send_message(f"Added {role.mention} to {member.mention}.", ephemeral=True)
+
     @app_commands.command(name="addavailabledew", description="Add comma-separated flavors to the bingo pool.")
     async def addavailabledew(self, interaction: discord.Interaction, flavors_csv: str):
         if not await admin_m.check_admin_status(self.bot, interaction):
