@@ -8,7 +8,6 @@ from timezonefinder import TimezoneFinder
 
 from utils.dew_map_manager import add_flavors, remove_flavors, list_flavors, create_find, update_find_image, delete_find
 from utils.admin_manager import check_admin_status
-from maps.mapgen import generate_map
 
 
 geolocator = Nominatim(user_agent="dew-map-bot")
@@ -57,7 +56,6 @@ class DewFindModal(discord.ui.Modal):
             tz_name,
         )
         await interaction.followup.send(f"Logged find **{find_id}** at {self.place_input.value.strip()}!", ephemeral=True)
-        await self.cog.regenerate_map()
         await self.cog.prompt_for_image(interaction.user, find_id)
 
 
@@ -65,10 +63,6 @@ class DewMap(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.pending_images = {}  # user_id -> find_id
-
-    async def regenerate_map(self):
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, generate_map)
 
     async def prompt_for_image(self, user: discord.User, find_id: str):
         try:
@@ -104,7 +98,6 @@ class DewMap(commands.Cog):
             update_find_image(pending_id, image_url)
             await message.channel.send("Image attached to your find. Thank you!")
             self.pending_images.pop(message.author.id, None)
-            await self.regenerate_map()
         else:
             await message.channel.send("Didn't detect an attachment or direct URL. Please send the image or say 'no' to skip.")
 
@@ -131,7 +124,6 @@ class DewMap(commands.Cog):
             return
         flavors = [name.strip() for name in flavors_csv.split(",") if name.strip()]
         added = add_flavors(flavors)
-        await self.regenerate_map()
         await interaction.response.send_message(f"Added {len(added)} flavors to the map list.", ephemeral=True)
 
     @app_commands.command(name="removeflavorfrommap", description="Remove comma-separated flavors from map database")
@@ -141,7 +133,6 @@ class DewMap(commands.Cog):
             return
         flavors = [name.strip() for name in flavors_csv.split(",") if name.strip()]
         removed = remove_flavors(flavors)
-        await self.regenerate_map()
         await interaction.response.send_message(f"Removed {len(removed)} flavors from the map list.", ephemeral=True)
 
     @app_commands.command(name="removefind", description="Remove a find by ID")
@@ -150,7 +141,6 @@ class DewMap(commands.Cog):
             await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
             return
         if delete_find(find_id):
-            await self.regenerate_map()
             await interaction.response.send_message(f"Removed find `{find_id}` from the map.", ephemeral=True)
         else:
             await interaction.response.send_message("No find with that ID was found.", ephemeral=True)
