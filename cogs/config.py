@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import os, json, asyncio, random
 from utils.vote_manager import FILE_LOCK, generate_user_tierlist_text, SERVER_FILE, generate_tierlist_text, read_json, save_tierlist_reference, reset_votes, write_json, update_tierlist_message, load_votes
+from utils.bingo_manager import mark_flavor, render_board
 
 class Config(commands.Cog):
     """
@@ -104,6 +105,58 @@ class Config(commands.Cog):
             print(f"server_data vote items modified: Added {item_name}")
         await interaction.response.send_message(f"{item_name} added to the vote list!")
 
+    @app_commands.command(name="assignrolebyid", description="Give an existing role (by ID) to a user.")
+    async def assignrolebyid(self, interaction: discord.Interaction, member: discord.Member, role_id: str):
+        if not await admin_m.check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used inside a server.", ephemeral=True)
+            return
+        try:
+            parsed_role_id = int(role_id)
+        except ValueError:
+            await interaction.response.send_message("Role ID must be a number.", ephemeral=True)
+            return
+        role = interaction.guild.get_role(parsed_role_id)
+        if not role:
+            await interaction.response.send_message("Couldn't find a role with that ID in this server.", ephemeral=True)
+            return
+        try:
+            await member.add_roles(role, reason=f"Assigned via /assignrolebyid by {interaction.user}")
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(f"Failed to assign role: {exc}", ephemeral=True)
+            return
+        await interaction.response.send_message(f"Added {role.mention} to {member.mention}.", ephemeral=True)
+
+    @app_commands.command(name="addavailabledew", description="Add comma-separated flavors to the bingo pool.")
+    async def addavailabledew(self, interaction: discord.Interaction, flavors_csv: str):
+        if not await admin_m.check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
+            return
+        flavors = [item.strip() for item in flavors_csv.split(",") if item.strip()]
+        if not flavors:
+            await interaction.response.send_message("Provide at least one flavor name.", ephemeral=True)
+            return
+        with open("data/server_data.json", "r+", encoding="utf-8") as f:
+            data = json.load(f)
+            guild_id = str(interaction.guild_id)
+            guild_entry = data.setdefault(guild_id, {})
+            available = guild_entry.setdefault("available_flavors", [])
+            seen = {name.lower() for name in available}
+            added = []
+            for flavor in flavors:
+                lowered = flavor.lower()
+                if lowered in seen:
+                    continue
+                available.append(flavor)
+                seen.add(lowered)
+                added.append(flavor)
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()
+        await interaction.response.send_message(f"Added {len(added)} flavor(s) to the bingo pool.", ephemeral=True)
+
     @app_commands.command(name="additemsfromlist", description="adds multiple items to vote from a comma-separated list")
     async def additemsfromlist(self, interaction: discord.Interaction, item_list : str):
         if(not await admin_m.check_admin_status(self.bot, interaction)):
@@ -162,7 +215,16 @@ class Config(commands.Cog):
             json.dump(data, f, indent=4)
             f.truncate()
         await update_tierlist_message(self.bot, interaction.guild_id)
-        await interaction.response.send_message(f"You voted **{score}/10** for **{flavor}**!", ephemeral=True)
+        content = f"You voted **{score}/10** for **{flavor}**!"
+        if interaction.guild_id:
+            changed, board = await mark_flavor(interaction.guild_id, interaction.user.id, flavor)
+            if changed and board:
+                buffer = await asyncio.to_thread(render_board, board)
+                file = discord.File(buffer, filename="dew_bingo.png")
+                content = f"{content}\n~~{flavor}~~ crossed off your bingo board!"
+                await interaction.response.send_message(content, file=file, ephemeral=True)
+                return
+        await interaction.response.send_message(content, ephemeral=True)
 
     @ratedew.autocomplete("flavor")
     async def ratedew_autocomplete(self, interaction: discord.Interaction, current: str):

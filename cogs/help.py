@@ -38,10 +38,12 @@ HELP_PAGES = [
     (
         "Tierlist Commands",
         [
-            ("/ratedew", "rate a flavor for your personal board"),
+            ("/ratedew", "rate a flavor and cross it off your bingo board"),
             ("/vote", "daily server-wide vote"),
             ("/flavorstats", "see stats for a flavor"),
             ("/buildusertierlist", "build your personal tier list"),
+            ("/bingocreate", "create a new Mountain Dew bingo board"),
+            ("/viewbingoboard", "view your current board image"),
         ],
     ),
     (
@@ -54,6 +56,8 @@ HELP_PAGES = [
             ("/settierlistchannel", "set server tier channel"),
             ("/additemtovote", "add an item to the vote list"),
             ("/additemsfromlist", "bulk add vote items"),
+            ("/assignrolebyid", "give a user a role using its ID"),
+            ("/addavailabledew", "add flavors to the bingo board pool"),
             ("/buildtierlist", "rebuild server tier list"),
             ("/cleartierlistdata", "wipe tier data"),
             ("/reload", "reload every cog"),
