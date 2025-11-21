@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 import { DewMap } from './components/DewMap';
-import { getFinds } from './services/finds';
+import { FindForm } from './components/FindForm';
+import { getFinds, getFlavors, submitFind } from './services/finds';
 
 function formatTimestamp(timestamp, timeZone) {
   try {
@@ -24,22 +25,46 @@ function App() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFindId, setSelectedFindId] = useState(null);
+  const [flavors, setFlavors] = useState([]);
+  const [flavorError, setFlavorError] = useState('');
+
+  const loadFinds = useCallback(
+    async (signal) => {
+      try {
+        setStatus('loading');
+        const data = await getFinds(signal);
+        setFinds(data);
+        setStatus('idle');
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        setError(err.message || 'Unable to load map data.');
+        setStatus('error');
+      }
+    },
+    [],
+  );
 
   // hydrate once so the map + cards have data ready
   useEffect(() => {
     const controller = new AbortController();
-    getFinds(controller.signal)
-      .then((data) => {
-        setFinds(data);
-        setStatus('idle');
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        setError(err.message || 'Unable to load map data.');
-        setStatus('error');
-      });
+    loadFinds(controller.signal);
+    return () => controller.abort();
+  }, [loadFinds]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getFlavors(controller.signal)
+      .then((list) => setFlavors(list))
+      .catch(() => setFlavorError('unable to load flavor list right now'));
     return () => controller.abort();
   }, []);
+
+  const handleFindSubmit = async (payload) => {
+    await submitFind(payload);
+    setSearchQuery('');
+    setSelectedFindId(null);
+    await loadFinds();
+  };
 
   // mirror leaflet filtering without hitting the api again
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -180,6 +205,12 @@ function App() {
               ))}
               {!topFlavors.length && <p className="muted">Flavors will appear here once finds roll in.</p>}
             </ul>
+          </div>
+          <div className="panel">
+            <h2>Log a find</h2>
+            {flavorError && <p className="form-error">{flavorError}</p>}
+            <FindForm flavors={flavors} onSubmit={handleFindSubmit} />
+            <p className="form-hint">submissions notify the discord mods just like /dewfind</p>
           </div>
         </section>
 

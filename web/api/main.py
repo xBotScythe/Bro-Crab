@@ -6,12 +6,15 @@ from fastapi.staticfiles import StaticFiles
 
 from web.api.routes import finds
 
-CLIENT_DIST = Path(__file__).resolve().parents[1] / "client" / "dist"
+ROOT = Path(__file__).resolve().parents[2]
+CLIENT_DIST = ROOT / "web" / "client" / "dist"
+UPLOADS_DIR = ROOT / "data" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def create_app() -> FastAPI:
     # shared fastapi instance for uvicorn and tests
-    app = FastAPI(title="dew map service", version="1.0.0")
+    app = FastAPI(title="dew map service", version="1.1.0")
 
     # allow the vite dev server + production origins to hit the api
     app.add_middleware(
@@ -24,12 +27,13 @@ def create_app() -> FastAPI:
     # api routes stay under /api
     app.include_router(finds.router, prefix="/api")
 
-    _mount_client(app)
+    _mount_static(app)
     return app
 
 
-def _mount_client(app: FastAPI) -> None:
-    # serve the built spa if it exists, fall back to a json root handler otherwise
+def _mount_static(app: FastAPI) -> None:
+    app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
     if CLIENT_DIST.exists():
         app.mount("/", StaticFiles(directory=CLIENT_DIST, html=True), name="client")
         return
