@@ -52,6 +52,23 @@ class Admin(commands.Cog):
         await write_json_async(data, USER_DATA_FILE)
         return stored
 
+    async def _pop_stored_roles_by_channel(self, guild_id: int, channel_id: Optional[int]):
+        if channel_id is None:
+            return None, None
+        data = await load_json_async(USER_DATA_FILE)
+        guild_entry = data.get(str(guild_id), {})
+        for user_id, info in list(guild_entry.items()):
+            stored = info.get("boomer_roles")
+            if stored and stored.get("channel_id") == channel_id:
+                info.pop("boomer_roles", None)
+                if not info:
+                    guild_entry.pop(user_id, None)
+                if not guild_entry:
+                    data.pop(str(guild_id), None)
+                await write_json_async(data, USER_DATA_FILE)
+                return stored, int(user_id)
+        return None, None
+
     def _get_category(self, guild: discord.Guild, name: str) -> Optional[discord.CategoryChannel]:
         # find category regardless of case
         lowered = name.lower()
@@ -200,12 +217,19 @@ class Admin(commands.Cog):
         guild = interaction.guild
         boomer_role = guild.get_role(self.boomer_role_id) if guild else None
 
-        member_id = member.id if member else (interaction.user.id if interaction.user else None)
-        if guild is None or member_id is None:
-            await interaction.followup.send("Unable to resolve member for boomer end.", ephemeral=True)
+        member_id = member.id if member else None
+        stored_payload = None
+        resolved_user_id = member_id
+        if guild is None:
+            await interaction.followup.send("Unable to resolve guild for boomer end.", ephemeral=True)
             return
 
-        stored_payload = await self._pop_stored_roles(guild.id, member_id)
+        if member_id is not None:
+            stored_payload = await self._pop_stored_roles(guild.id, member_id)
+        else:
+            resolved_channel_id = interaction.channel.id if interaction.channel else None
+            stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(guild.id, resolved_channel_id)
+
         if stored_payload is None:
             await interaction.followup.send("No stored roles found for that member.", ephemeral=True)
             return
@@ -239,7 +263,8 @@ class Admin(commands.Cog):
             if missing:
                 summary += f" {len(missing)} roles were missing or higher than me and could not be restored."
         else:
-            summary = "No member supplied; skipped role restoration."
+            target = f"<@{resolved_user_id}>" if resolved_user_id else "the recorded member"
+            summary = f"No member supplied; skipped role restoration for {target}."
 
         await self._archive_channel_by_id(guild, channel_id or (interaction.channel.id if interaction.channel else None))
         await interaction.followup.send(summary, ephemeral=True)
