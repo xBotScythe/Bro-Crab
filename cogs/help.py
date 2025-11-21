@@ -38,10 +38,11 @@ HELP_PAGES = [
     (
         "Tierlist Commands",
         [
-            ("/ratedew", "rate a flavor for your personal board"),
+            ("/ratedew", "rate a flavor and cross it off your bingo board"),
             ("/vote", "daily server-wide vote"),
             ("/flavorstats", "see stats for a flavor"),
             ("/buildusertierlist", "build your personal tier list"),
+            ("/bingocreate", "create a new Mountain Dew bingo board"),
         ],
     ),
     (
