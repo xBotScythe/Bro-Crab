@@ -22,7 +22,9 @@ function App() {
   const [finds, setFinds] = useState([]);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
+  // hydrate once so the map + cards have data ready
   useEffect(() => {
     const controller = new AbortController();
     getFinds(controller.signal)
@@ -38,14 +40,27 @@ function App() {
     return () => controller.abort();
   }, []);
 
-  const flavorCount = useMemo(() => new Set(finds.map((find) => find.flavor)).size, [finds]);
+  // mirror leaflet filtering without hitting the api again
+  const filteredFinds = useMemo(() => {
+    if (!searchQuery.trim()) return finds;
+    const q = searchQuery.trim().toLowerCase();
+    return finds.filter((find) => {
+      return (
+        find.flavor.toLowerCase().includes(q) ||
+        find.locationName.toLowerCase().includes(q) ||
+        find.address.toLowerCase().includes(q)
+      );
+    });
+  }, [finds, searchQuery]);
+
+  const flavorCount = useMemo(() => new Set(filteredFinds.map((find) => find.flavor)).size, [filteredFinds]);
   const latestFinds = useMemo(() => {
-    return [...finds]
+    return [...filteredFinds]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 5);
-  }, [finds]);
+  }, [filteredFinds]);
   const topFlavors = useMemo(() => {
-    const counts = finds.reduce((acc, find) => {
+    const counts = filteredFinds.reduce((acc, find) => {
       acc[find.flavor] = (acc[find.flavor] || 0) + 1;
       return acc;
     }, {});
@@ -59,11 +74,20 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>DEW Community Finder</h1>
+          <h1>DEW Community Locator</h1>
           <p className="lede">
             See every community-reported flavor drop in real time. Log your own finds with the{' '}
             <span>/dewfind</span> command in the Dew Drinker Discord. Website finds coming soon!
           </p>
+          <div className="search-bar">
+            {/* quick client-side filter across flavor + place text */}
+            <input
+              type="search"
+              placeholder="search flavor or location"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </div>
         </div>
         <a className="primary-link" href="https://discord.com/invite/dew" target="_blank" rel="noreferrer">
           Open Discord
@@ -81,7 +105,7 @@ function App() {
           <div className="stat-grid">
             <article className="stat-card">
               <p className="stat-label">Total finds</p>
-              <p className="stat-value">{finds.length}</p>
+              <p className="stat-value">{filteredFinds.length}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">Flavors tracked</p>
@@ -125,7 +149,7 @@ function App() {
 
         <section className="map-panel">
           {status === 'loading' && <div className="map-overlay">Loading map…</div>}
-          <DewMap finds={finds} />
+          <DewMap finds={filteredFinds} />
         </section>
       </main>
     </div>

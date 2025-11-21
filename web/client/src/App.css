@@ -59,6 +59,27 @@ body {
   box-shadow: 0 12px 30px rgba(41, 210, 255, 0.3);
 }
 
+.search-bar {
+  margin-top: 1rem;
+}
+
+.search-bar input {
+  width: min(420px, 90vw);
+  padding: 0.85rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 165, 255, 0.3);
+  background: rgba(6, 13, 24, 0.9);
+  color: #f4f7fb;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.search-bar input:focus {
+  outline: none;
+  border-color: #29d2ff;
+  box-shadow: 0 0 0 2px rgba(41, 210, 255, 0.25);
+}
+
 .error-banner {
   background: rgba(255, 92, 92, 0.1);
   border: 1px solid rgba(255, 92, 92, 0.4);
