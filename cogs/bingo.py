@@ -27,7 +27,7 @@ class Bingo(commands.Cog):
     @app_commands.describe(size="Pick a board size.")
     @app_commands.choices(
         size=[
-            app_commands.Choice(name="3 × 3", value=3),
+            app_commands.Choice(name="5 x 5", value=5),
         ]
     )
     async def bingocreate(self, interaction: discord.Interaction, size: app_commands.Choice[int]):
