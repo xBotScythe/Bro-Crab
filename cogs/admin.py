@@ -125,26 +125,9 @@ class Admin(commands.Cog):
 
         if isinstance(channel, discord.TextChannel):
             archive_category = self._get_category(guild, ARCHIVE_CATEGORY_NAME)
-            overwrites = channel.overwrites
-            boomer_role_id = self.boomer_role_id or self.default_boomer_role
-            boomer_role = guild.get_role(boomer_role_id)
-            if boomer_role:
-                overwrites = dict(overwrites)
-                perms = overwrites.get(boomer_role, discord.PermissionOverwrite())
-                perms.view_channel = False
-                overwrites[boomer_role] = perms
             if archive_category:
                 try:
-                    await channel.edit(
-                        category=archive_category,
-                        overwrites=overwrites,
-                        reason="boomer archive relocate",
-                    )
-                except discord.HTTPException:
-                    pass
-            else:
-                try:
-                    await channel.edit(overwrites=overwrites, reason="boomer archive lockout")
+                    await channel.edit(category=archive_category, reason="boomer archive relocate")
                 except discord.HTTPException:
                     pass
 
