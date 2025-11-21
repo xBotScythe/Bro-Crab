@@ -41,6 +41,7 @@ export function DewMap({ finds }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
       />
+      {/* markers mirror whatever the filtered list passes down */}
       {finds.map((find) => (
         <Marker key={find.id} position={[find.latitude, find.longitude]}>
           <Tooltip>{`${find.flavor} (${find.size})`}</Tooltip>
