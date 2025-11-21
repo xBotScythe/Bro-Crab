@@ -98,13 +98,15 @@ async def _resolve_log_channel(bot):
 def _prepare_payload(message):
     return {
         "model": "local",
-        "session_id": f"dew-{int(time.time() * 1000)}",  
+        "session_id": f"dew-{int(time.time() * 1000)}",
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are a moderator assistant for the DEW Drinker Discord. "
-                    "Review the deleted message. Respond yes/no with a short explanation.\n"
+                    "Review each deleted message and decide if a warning is needed. "
+                    "Respond EXACTLY as `yes: <rule + brief reason>` or `no: <brief reason>`. "
+                    "Cite the specific rule if warning.\n"
                     f"Server rules:\n{SERVER_RULES}"
                 ),
             },
@@ -142,9 +144,26 @@ async def _review_with_llm(message):
     except (KeyError, IndexError, AttributeError):
         return None
 
-    lower = content.lower()
-    recommend = "yes" if "yes" in lower else "no"
-    explanation = content if recommend == "yes" else "no warning recommended"
+    normalized = content.strip()
+    lower = normalized.lower()
+
+    if lower.startswith("yes"):
+        recommend = "yes"
+    elif lower.startswith("no"):
+        recommend = "no"
+    else:
+        return None
+
+    explanation = ""
+    if ":" in normalized:
+        explanation = normalized.split(":", 1)[1].strip()
+    elif "-" in normalized:
+        explanation = normalized.split("-", 1)[1].strip()
+    else:
+        explanation = normalized[len(recommend):].strip()
+
+    if not explanation:
+        explanation = "rule violation" if recommend == "yes" else "no warning recommended"
 
     return {"recommend": recommend, "explanation": explanation}
 
