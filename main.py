@@ -96,6 +96,12 @@ async def on_message_delete(message):
     except Exception as e:
         print(f"delete log failed for {message.id}: {e}")
 
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+    await bot.process_commands(message)
+
 #  Background tasks 
 @tasks.loop(hours=6)
 async def refresh_booster_data():
