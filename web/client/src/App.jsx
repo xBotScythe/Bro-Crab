@@ -23,6 +23,7 @@ function App() {
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFindId, setSelectedFindId] = useState(null);
 
   // hydrate once so the map + cards have data ready
   useEffect(() => {
@@ -55,6 +56,14 @@ function App() {
       );
     });
   }, [finds, normalizedQuery]);
+
+  useEffect(() => {
+    if (!selectedFindId) return;
+    const stillVisible = filteredFinds.some((find) => find.id === selectedFindId);
+    if (!stillVisible) {
+      setSelectedFindId(null);
+    }
+  }, [filteredFinds, selectedFindId]);
 
   const flavorCount = useMemo(() => new Set(filteredFinds.map((find) => find.flavor)).size, [filteredFinds]);
   const latestFinds = useMemo(() => {
@@ -91,6 +100,21 @@ function App() {
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </div>
+          {hasFilter && filteredFinds.length > 0 && (
+            <div className="search-results">
+              {filteredFinds.slice(0, 8).map((find) => (
+                <button
+                  key={find.id}
+                  type="button"
+                  className={`search-result${find.id === selectedFindId ? ' is-active' : ''}`}
+                  onClick={() => setSelectedFindId(find.id)}
+                >
+                  <span className="search-result__title">{find.locationName}</span>
+                  <span className="search-result__detail">{find.flavor}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <a className="primary-link" href="https://discord.com/invite/dew" target="_blank" rel="noreferrer">
           Open Discord
@@ -161,7 +185,7 @@ function App() {
 
         <section className="map-panel">
           {status === 'loading' && <div className="map-overlay">Loading map…</div>}
-          <DewMap finds={filteredFinds} />
+          <DewMap finds={filteredFinds} activeFindId={selectedFindId} />
         </section>
       </main>
     </div>
