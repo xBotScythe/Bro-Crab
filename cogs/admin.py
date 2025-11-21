@@ -134,7 +134,12 @@ class Admin(commands.Cog):
         user="Member to act on.",
         action="Choose 'start' to strip roles, 'end' to restore them."
     )
-    async def boomer(self, interaction: discord.Interaction, user: discord.Member, action: Literal["start", "end"]):
+    async def boomer(
+        self,
+        interaction: discord.Interaction,
+        action: Literal["start", "end"],
+        user: Optional[discord.Member] = None,
+    ):
         if not interaction.guild:
             await interaction.response.send_message("This command can only be used in a guild.", ephemeral=True)
             return
@@ -157,7 +162,10 @@ class Admin(commands.Cog):
         else:
             await self._handle_boomer_end(interaction, user)
 
-    async def _handle_boomer_start(self, interaction: discord.Interaction, member: discord.Member):
+    async def _handle_boomer_start(self, interaction: discord.Interaction, member: Optional[discord.Member]):
+        if member is None:
+            await interaction.followup.send("Provide a member to start the boomer process.", ephemeral=True)
+            return
         guild = interaction.guild
         boomer_role = guild.get_role(self.boomer_role_id) if guild else None
         if not boomer_role:
@@ -188,42 +196,52 @@ class Admin(commands.Cog):
             msg = f"Stored {len(removable_roles)} roles and " + msg
         await interaction.followup.send(msg, ephemeral=True)
 
-    async def _handle_boomer_end(self, interaction: discord.Interaction, member: discord.Member):
+    async def _handle_boomer_end(self, interaction: discord.Interaction, member: Optional[discord.Member]):
         guild = interaction.guild
         boomer_role = guild.get_role(self.boomer_role_id) if guild else None
 
-        stored_payload = await self._pop_stored_roles(guild.id, member.id)
+        member_id = member.id if member else (interaction.user.id if interaction.user else None)
+        if guild is None or member_id is None:
+            await interaction.followup.send("Unable to resolve member for boomer end.", ephemeral=True)
+            return
+
+        stored_payload = await self._pop_stored_roles(guild.id, member_id)
         if stored_payload is None:
             await interaction.followup.send("No stored roles found for that member.", ephemeral=True)
             return
         stored_role_ids = stored_payload.get("roles", [])
+        channel_id = stored_payload.get("channel_id")
 
-        roles_to_add = []
-        missing = []
-        for role_id in stored_role_ids:
-            role = guild.get_role(role_id)
-            if role and role < guild.me.top_role:
-                roles_to_add.append(role)
-            else:
-                missing.append(role_id)
+        if member:
+            roles_to_add = []
+            missing = []
+            for role_id in stored_role_ids:
+                role = guild.get_role(role_id)
+                if role and role < guild.me.top_role:
+                    roles_to_add.append(role)
+                else:
+                    missing.append(role_id)
 
-        if roles_to_add:
-            try:
-                await member.add_roles(*roles_to_add, reason=f"Boomer end triggered by {interaction.user}")
-            except discord.HTTPException as exc:
-                await interaction.followup.send(f"Failed to restore roles: {exc}", ephemeral=True)
-                return
+            if roles_to_add:
+                try:
+                    await member.add_roles(*roles_to_add, reason=f"Boomer end triggered by {interaction.user}")
+                except discord.HTTPException as exc:
+                    await interaction.followup.send(f"Failed to restore roles: {exc}", ephemeral=True)
+                    return
 
-        if boomer_role in member.roles:
-            try:
-                await member.remove_roles(boomer_role, reason="Boomer workflow complete")
-            except discord.HTTPException:
-                pass
+            if boomer_role and boomer_role in member.roles:
+                try:
+                    await member.remove_roles(boomer_role, reason="Boomer workflow complete")
+                except discord.HTTPException:
+                    pass
 
-        await self._archive_current_channel(interaction)
-        summary = f"Restored {len(roles_to_add)} roles to {member.mention}."
-        if missing:
-            summary += f" {len(missing)} roles were missing or higher than me and could not be restored."
+            summary = f"Restored {len(roles_to_add)} roles to {member.mention}."
+            if missing:
+                summary += f" {len(missing)} roles were missing or higher than me and could not be restored."
+        else:
+            summary = "No member supplied; skipped role restoration."
+
+        await self._archive_channel_by_id(guild, channel_id or (interaction.channel.id if interaction.channel else None))
         await interaction.followup.send(summary, ephemeral=True)
 
     async def _auto_end_boomer(self, guild: discord.Guild, user_id: int, reason: str):
