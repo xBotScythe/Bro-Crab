@@ -123,7 +123,7 @@ class Config(commands.Cog):
             await interaction.response.send_message("Couldn't find a role with that ID in this server.", ephemeral=True)
             return
         try:
-            await member.add_roles(role, reason=f"Assigned via /assignrolebyid by {interaction.user}")
+            await member.add_roles(role, reason=f"Assigned via /assignrolebyid")
         except discord.HTTPException as exc:
             await interaction.response.send_message(f"Failed to assign role: {exc}", ephemeral=True)
             return
