@@ -9,6 +9,7 @@ import discord
 DELETE_LOG_CHANNEL_ID = os.getenv("DELETE_LOG_CHANNEL_ID")
 LLM_ENDPOINT = os.getenv("LLM_REVIEW_ENDPOINT", "http://100.66.147.4:1234/v1/chat/completions")
 _LLM_LOCK = asyncio.Lock()
+_AUDIT_LOCK = asyncio.Lock()
 _LAST_LLM_CALL = 0.0
 
 SERVER_RULES = """
@@ -50,26 +51,27 @@ async def _infer_deleter(message):
     if not (me and me.guild_permissions.view_audit_log):
         return None
 
-    try:
-        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_delete):
-            # match correct user + channel
-            target = getattr(entry, "target", None)
-            if not target or target.id != message.author.id:
-                continue
+    async with _AUDIT_LOCK:
+        try:
+            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_delete):
+                # match correct user + channel
+                target = getattr(entry, "target", None)
+                if not target or target.id != message.author.id:
+                    continue
 
-            extra = getattr(entry, "extra", None)
-            ch = getattr(extra, "channel", None) if extra else None
-            if ch and ch.id != message.channel.id:
-                continue
+                extra = getattr(entry, "extra", None)
+                ch = getattr(extra, "channel", None) if extra else None
+                if ch and ch.id != message.channel.id:
+                    continue
 
-            # only accept very recent logs
-            age = (discord.utils.utcnow() - entry.created_at).total_seconds()
-            if age > 15:
-                continue
+                # only accept very recent logs
+                age = (discord.utils.utcnow() - entry.created_at).total_seconds()
+                if age > 15:
+                    continue
 
-            return entry.user
-    except (discord.Forbidden, discord.HTTPException):
-        return None
+                return entry.user
+        except (discord.Forbidden, discord.HTTPException):
+            return None
 
     return None
 
