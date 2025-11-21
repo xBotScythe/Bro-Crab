@@ -159,7 +159,7 @@ def render_board(board: Dict):
         x = grid_left + i * cell_size
         draw.line((x, grid_top, x, grid_bottom), fill=line_color, width=4)
 
-    cell_font = _load_font(max(72, int(cell_size * 0.28)))
+    cell_font = _load_font(max(60, int(cell_size * 0.22)))
 
     for index, cell in enumerate(cells):
         row, col = divmod(index, size)
@@ -173,7 +173,7 @@ def render_board(board: Dict):
             draw.rounded_rectangle(fill_box, radius=30, fill=(234, 244, 234))
 
         label = cell.get("label", "")
-        lines = _wrap_text(label, cell_font, cell_size - 80)
+        lines = _wrap_text(label, cell_font, cell_size - 100)
         text = "\n".join(lines)
         text_bbox = draw.multiline_textbbox((0, 0), text, font=cell_font, align="center")
         text_width = text_bbox[2] - text_bbox[0]
