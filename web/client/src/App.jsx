@@ -41,17 +41,20 @@ function App() {
   }, []);
 
   // mirror leaflet filtering without hitting the api again
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const hasFilter = Boolean(normalizedQuery);
+
   const filteredFinds = useMemo(() => {
-    if (!searchQuery.trim()) return finds;
-    const q = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return finds;
+    // cheap client-side substring filter so users can hunt down drops fast
     return finds.filter((find) => {
       return (
-        find.flavor.toLowerCase().includes(q) ||
-        find.locationName.toLowerCase().includes(q) ||
-        find.address.toLowerCase().includes(q)
+        find.flavor.toLowerCase().includes(normalizedQuery) ||
+        find.locationName.toLowerCase().includes(normalizedQuery) ||
+        find.address.toLowerCase().includes(normalizedQuery)
       );
     });
-  }, [finds, searchQuery]);
+  }, [finds, normalizedQuery]);
 
   const flavorCount = useMemo(() => new Set(filteredFinds.map((find) => find.flavor)).size, [filteredFinds]);
   const latestFinds = useMemo(() => {
@@ -68,7 +71,7 @@ function App() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([flavor, count]) => ({ flavor, count }));
-  }, [finds]);
+  }, [filteredFinds]);
 
   return (
     <div className="app-shell">
@@ -97,6 +100,15 @@ function App() {
       {status === 'error' && (
         <div className="error-banner">
           <p>We couldn&apos;t load the map data: {error}</p>
+        </div>
+      )}
+      {hasFilter && !filteredFinds.length && (
+        <div className="notice-banner">
+          <p>
+            no finds matched &ldquo;
+            {searchQuery}
+            &rdquo;
+          </p>
         </div>
       )}
 
