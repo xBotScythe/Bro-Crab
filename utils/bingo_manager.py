@@ -126,31 +126,28 @@ def _load_font(size: int):
 def render_board(board: Dict):
     size = board.get("size", 5)
     cells = board.get("cells", [])
-    margin = 60
-    gap = 12
-    base_cell = 260
-    cell_size = max(180, base_cell - (size - 3) * 30)
+    margin = 80
+    gap = 16
+    base_cell = 320
+    cell_size = max(220, base_cell - (size - 3) * 40)
     width = margin * 2 + size * cell_size + (size - 1) * gap
-    height = width + 140
+    height = width + 180
 
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
-    title_font = _load_font(64)
-    subtitle_font = _load_font(32)
-    cell_font = _load_font(36 if size >= 5 else 44)
+    title_font = _load_font(80)
+    subtitle_font = _load_font(40)
+    cell_font_size = max(48, int(cell_size * 0.22))
+    cell_font = _load_font(cell_font_size)
 
     title = "Mountain Dew Bingo"
     title_bbox = title_font.getbbox(title)
-    title_x = (width - (title_bbox[2] - title_bbox[0])) / 2
-    draw.text((title_x, 30), title, fill=(0, 0, 0), font=title_font)
+    title_width = title_bbox[2] - title_bbox[0]
+    title_x = (width - title_width) / 2
+    draw.text((title_x, 40), title, fill=(0, 0, 0), font=title_font)
 
-    subtitle = f"{size} × {size} Board"
-    subtitle_bbox = subtitle_font.getbbox(subtitle)
-    subtitle_x = (width - (subtitle_bbox[2] - subtitle_bbox[0])) / 2
-    draw.text((subtitle_x, 110), subtitle, fill=(60, 60, 60), font=subtitle_font)
-
-    board_top = 190
+    board_top = 230
     for index, cell in enumerate(cells):
         row, col = divmod(index, size)
         x0 = margin + col * (cell_size + gap)
@@ -158,12 +155,12 @@ def render_board(board: Dict):
         x1 = x0 + cell_size
         y1 = y0 + cell_size
 
-        fill_color = (245, 245, 245) if not cell.get("marked") else (220, 235, 220)
+        fill_color = (245, 245, 245) if not cell.get("marked") else (220, 240, 220)
         outline_color = (0, 0, 0)
-        draw.rounded_rectangle((x0, y0, x1, y1), radius=22, fill=fill_color, outline=outline_color, width=4)
+        draw.rounded_rectangle((x0, y0, x1, y1), radius=28, fill=fill_color, outline=outline_color, width=5)
 
         label = cell.get("label", "")
-        lines = _wrap_text(label, cell_font, cell_size - 40)
+        lines = _wrap_text(label, cell_font, cell_size - 60)
         text = "\n".join(lines)
         text_bbox = draw.multiline_textbbox((0, 0), text, font=cell_font, align="center")
         text_width = text_bbox[2] - text_bbox[0]
@@ -174,12 +171,12 @@ def render_board(board: Dict):
 
         if cell.get("marked"):
             line_y = y0 + cell_size / 2
-            draw.line((x0 + 18, line_y, x1 - 18, line_y), fill=(200, 0, 0), width=8)
+            draw.line((x0 + 24, line_y, x1 - 24, line_y), fill=(200, 0, 0), width=10)
 
     updated_at = board.get("updated_at")
     if updated_at:
         stamp = f"Updated: {updated_at.split('T')[0]}"
-        draw.text((margin, height - 60), stamp, fill=(80, 80, 80), font=subtitle_font)
+        draw.text((margin, height - 70), stamp, fill=(80, 80, 80), font=subtitle_font)
 
     output = BytesIO()
     image.save(output, format="PNG")
