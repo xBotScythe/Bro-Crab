@@ -29,11 +29,18 @@ async def _write_user_data(data: Dict):
     await write_json_async(data, USER_DATA_FILE)
 
 
-async def get_flavor_pool(guild_id: int):
+async def get_flavor_pool(guild_id: int) -> List[str]:
     data = await _load_server_data()
     guild_entry = data.get(str(guild_id), {})
-    flavor_roles = guild_entry.get("flavor_roles", {})
-    return list(flavor_roles.keys())
+    flavors = guild_entry.get("available_flavors") or []
+    seen = set()
+    unique = []
+    for flavor in flavors:
+        lowered = flavor.lower()
+        if lowered not in seen:
+            seen.add(lowered)
+            unique.append(flavor)
+    return unique
 
 
 def _build_cells_from_pool(pool: List[str], size: int):
@@ -56,7 +63,7 @@ async def create_board(guild_id: int, user_id: int, size: int):
     total_cells = size * size
     needed = total_cells - 1
     if len(pool) < needed:
-        raise ValueError(f"need at least {needed} unique flavors to build a {size}x{size} board.")
+        raise ValueError(f"Need at least {needed} available flavors to build a {size}×{size} board. Ask an admin to run /addavailabledew.")
     board = {
         "size": size,
         "cells": _build_cells_from_pool(pool, size),

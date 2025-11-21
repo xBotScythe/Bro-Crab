@@ -105,6 +105,34 @@ class Config(commands.Cog):
             print(f"server_data vote items modified: Added {item_name}")
         await interaction.response.send_message(f"{item_name} added to the vote list!")
 
+    @app_commands.command(name="addavailabledew", description="Add comma-separated flavors to the bingo pool.")
+    async def addavailabledew(self, interaction: discord.Interaction, flavors_csv: str):
+        if not await admin_m.check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?", ephemeral=True)
+            return
+        flavors = [item.strip() for item in flavors_csv.split(",") if item.strip()]
+        if not flavors:
+            await interaction.response.send_message("Provide at least one flavor name.", ephemeral=True)
+            return
+        with open("data/server_data.json", "r+", encoding="utf-8") as f:
+            data = json.load(f)
+            guild_id = str(interaction.guild_id)
+            guild_entry = data.setdefault(guild_id, {})
+            available = guild_entry.setdefault("available_flavors", [])
+            seen = {name.lower() for name in available}
+            added = []
+            for flavor in flavors:
+                lowered = flavor.lower()
+                if lowered in seen:
+                    continue
+                available.append(flavor)
+                seen.add(lowered)
+                added.append(flavor)
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()
+        await interaction.response.send_message(f"Added {len(added)} flavor(s) to the bingo pool.", ephemeral=True)
+
     @app_commands.command(name="additemsfromlist", description="adds multiple items to vote from a comma-separated list")
     async def additemsfromlist(self, interaction: discord.Interaction, item_list : str):
         if(not await admin_m.check_admin_status(self.bot, interaction)):

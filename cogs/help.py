@@ -56,6 +56,7 @@ HELP_PAGES = [
             ("/settierlistchannel", "set server tier channel"),
             ("/additemtovote", "add an item to the vote list"),
             ("/additemsfromlist", "bulk add vote items"),
+            ("/addavailabledew", "add flavors to the bingo board pool"),
             ("/buildtierlist", "rebuild server tier list"),
             ("/cleartierlistdata", "wipe tier data"),
             ("/reload", "reload every cog"),
