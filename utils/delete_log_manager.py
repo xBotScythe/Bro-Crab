@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -7,6 +8,7 @@ import discord
 
 DELETE_LOG_CHANNEL_ID = os.getenv("DELETE_LOG_CHANNEL_ID")
 LLM_ENDPOINT = os.getenv("LLM_REVIEW_ENDPOINT", "http://100.66.147.4:1234/v1/chat/completions")
+_LLM_LOCK = asyncio.Lock()
 
 SERVER_RULES = """
 General Rules
@@ -127,14 +129,23 @@ def _prepare_payload(message):
 
 
 async def _review_with_llm(message):
-    async with aiohttp.ClientSession() as session:
+    payload = _prepare_payload(message)
+    data = None
+
+    for attempt in range(3):
         try:
-            payload = _prepare_payload(message)
-            async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
-                resp.raise_for_status()
-                data = await _parse_llm_response(resp)
+            async with _LLM_LOCK:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
+                        resp.raise_for_status()
+                        data = await _parse_llm_response(resp)
+            if data:
+                break
         except Exception:
-            return None
+            data = None
+
+        if attempt < 2:
+            await asyncio.sleep(1 + attempt)
 
     if not data:
         return None
