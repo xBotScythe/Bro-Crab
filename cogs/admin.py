@@ -148,14 +148,16 @@ class Admin(commands.Cog):
 
     @app_commands.command(name="boomer", description="Start or end the boomer process for a member.")
     @app_commands.describe(
-        user="Member to act on.",
-        action="Choose 'start' to strip roles, 'end' to restore them."
+        action="Choose 'start' to strip roles, 'end' to restore them.",
+        user="Member to act on (optional when ending).",
+        channel="Channel to archive if the member is gone."
     )
     async def boomer(
         self,
         interaction: discord.Interaction,
         action: Literal["start", "end"],
         user: Optional[discord.Member] = None,
+        channel: Optional[discord.TextChannel] = None,
     ):
         if not interaction.guild:
             await interaction.response.send_message("This command can only be used in a guild.", ephemeral=True)
@@ -177,7 +179,7 @@ class Admin(commands.Cog):
         if action == "start":
             await self._handle_boomer_start(interaction, user)
         else:
-            await self._handle_boomer_end(interaction, user)
+            await self._handle_boomer_end(interaction, user, channel)
 
     async def _handle_boomer_start(self, interaction: discord.Interaction, member: Optional[discord.Member]):
         if member is None:
@@ -213,7 +215,7 @@ class Admin(commands.Cog):
             msg = f"Stored {len(removable_roles)} roles and " + msg
         await interaction.followup.send(msg, ephemeral=True)
 
-    async def _handle_boomer_end(self, interaction: discord.Interaction, member: Optional[discord.Member]):
+    async def _handle_boomer_end(self, interaction: discord.Interaction, member: Optional[discord.Member], channel: Optional[discord.TextChannel] = None):
         guild = interaction.guild
         boomer_role = guild.get_role(self.boomer_role_id) if guild else None
 
@@ -227,7 +229,7 @@ class Admin(commands.Cog):
         if member_id is not None:
             stored_payload = await self._pop_stored_roles(guild.id, member_id)
         else:
-            resolved_channel_id = interaction.channel.id if interaction.channel else None
+            resolved_channel_id = channel.id if channel else (interaction.channel.id if interaction.channel else None)
             stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(guild.id, resolved_channel_id)
 
         if stored_payload is None:
@@ -266,7 +268,8 @@ class Admin(commands.Cog):
             target = f"<@{resolved_user_id}>" if resolved_user_id else "the recorded member"
             summary = f"No member supplied; skipped role restoration for {target}."
 
-        await self._archive_channel_by_id(guild, channel_id or (interaction.channel.id if interaction.channel else None))
+        archive_target = channel_id or (channel.id if channel else None) or (interaction.channel.id if interaction.channel else None)
+        await self._archive_channel_by_id(guild, archive_target)
         await interaction.followup.send(summary, ephemeral=True)
 
     async def _auto_end_boomer(self, guild: discord.Guild, user_id: int, reason: str):
