@@ -100,39 +100,36 @@ class Admin(commands.Cog):
 
     async def _archive_channel_by_id(self, guild: discord.Guild, channel_id: Optional[int]):
         if guild is None:
-            return False, "Guild not found for archiving."
+            return
         channel = guild.get_channel(channel_id) if channel_id else None
         if channel is None:
             channel = discord.utils.get(guild.text_channels, name=NEW_CHANNEL_NAME)
-        return await self._archive_channel_logic(guild, channel)
+        await self._archive_channel_logic(guild, channel)
 
     async def _archive_channel_logic(self, guild: discord.Guild, channel: Optional[discord.abc.GuildChannel]):
-        if guild is None:
-            return False, "Unable to archive channel: missing guild reference."
+        if guild is None or channel is None:
+            return False, "Unable to archive channel: missing reference."
         server_data = await load_json_async(SERVER_DATA_FILE)
         guild_entry = server_data.setdefault(str(guild.id), {})
         archive_state = guild_entry.setdefault("lightning_archive", {})
         next_number = archive_state.get("next_number", DEFAULT_ARCHIVE_START)
         new_name = f"lightning-archive-{next_number}"
-        renamed = False
 
-        if channel is not None:
-            try:
-                if isinstance(channel, discord.Thread):
-                    await channel.edit(name=new_name, archived=True, locked=True)
-                elif isinstance(channel, discord.TextChannel):
-                    await channel.edit(name=new_name, reason="boomer archive rotate")
-            except discord.HTTPException as exc:
-                return False, f"Archive rename failed: {exc}"
+        try:
+            if isinstance(channel, discord.Thread):
+                await channel.edit(name=new_name, archived=True, locked=True)
+            elif isinstance(channel, discord.TextChannel):
+                await channel.edit(name=new_name, reason="boomer archive rotate")
+        except discord.HTTPException as exc:
+            return False, f"Archive rename failed: {exc}"
 
-            if isinstance(channel, discord.TextChannel):
-                archive_category = self._get_category(guild, ARCHIVE_CATEGORY_NAME)
-                if archive_category:
-                    try:
-                        await channel.edit(category=archive_category, reason="boomer archive relocate")
-                    except discord.HTTPException:
-                        pass
-            renamed = True
+        if isinstance(channel, discord.TextChannel):
+            archive_category = self._get_category(guild, ARCHIVE_CATEGORY_NAME)
+            if archive_category:
+                try:
+                    await channel.edit(category=archive_category, reason="boomer archive relocate")
+                except discord.HTTPException:
+                    pass
 
         mountain_category = self._get_category(guild, MAIN_CATEGORY_NAME)
         existing_new = discord.utils.get(guild.text_channels, name=NEW_CHANNEL_NAME)
@@ -145,10 +142,7 @@ class Admin(commands.Cog):
             except discord.HTTPException as exc:
                 return False, f"Could not create #{NEW_CHANNEL_NAME}: {exc}"
 
-        if renamed:
-            archive_state["next_number"] = next_number + 1
-        else:
-            archive_state["next_number"] = next_number
+        archive_state["next_number"] = next_number + 1
         guild_entry["lightning_archive"] = archive_state
         await write_json_async(server_data, SERVER_DATA_FILE)
         return True, None
@@ -328,10 +322,7 @@ class Admin(commands.Cog):
             summary = f"No member supplied; skipped role restoration for {target}."
 
         archive_target = channel_id or (channel.id if channel else None) or (interaction.channel.id if interaction.channel else None)
-        success, message = await self._archive_channel_by_id(guild, archive_target)
-        if not success and message:
-            await interaction.followup.send(message, ephemeral=True)
-            return
+        await self._archive_channel_by_id(guild, archive_target)
         await interaction.followup.send(summary, ephemeral=True)
 
     async def _auto_end_boomer(self, guild: discord.Guild, user_id: int, reason: str):
@@ -341,13 +332,10 @@ class Admin(commands.Cog):
         if stored_payload is None:
             return
         channel_id = stored_payload.get("channel_id")
-        success, _ = await self._archive_channel_by_id(guild, channel_id)
+        await self._archive_channel_by_id(guild, channel_id)
         warn_channel = await self._get_warn_channel()
         if warn_channel:
-            note = f"Boomer workflow auto-ended for <@{user_id}> ({reason})."
-            if not success:
-                note += " Channel not found for archiving."
-            await warn_channel.send(note)
+            await warn_channel.send(f"Boomer workflow auto-ended for <@{user_id}> ({reason}).")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
