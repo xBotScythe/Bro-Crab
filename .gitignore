@@ -12,6 +12,7 @@ contest_manager.py
 maps/__init__.py
 maps/dew_finds_map.html
 data/dew_map.db
+data/uploads/*
 
 # Logs
 logs
