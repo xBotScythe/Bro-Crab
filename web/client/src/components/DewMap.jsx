@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -50,6 +50,7 @@ export function DewMap({ finds, activeFindId }) {
 function DewMapMarkers({ finds, activeFindId }) {
   const map = useMap();
   const markerRefs = useRef({});
+  const jitteredFinds = useMemo(() => jitterLocations(finds), [finds]);
 
   useEffect(() => {
     if (!activeFindId) return;
@@ -61,10 +62,10 @@ function DewMapMarkers({ finds, activeFindId }) {
     marker.openPopup();
   }, [activeFindId, map, finds]);
 
-  return finds.map((find) => (
+  return jitteredFinds.map((find) => (
     <Marker
       key={find.id}
-      position={[find.latitude, find.longitude]}
+      position={[find.jitteredLat, find.jitteredLng]}
       ref={(ref) => {
         if (ref) {
           markerRefs.current[find.id] = ref;
@@ -87,4 +88,34 @@ function DewMapMarkers({ finds, activeFindId }) {
       </Popup>
     </Marker>
   ));
+}
+
+function jitterLocations(finds) {
+  const buckets = new Map();
+  finds.forEach((find) => {
+    const key = `${find.latitude.toFixed(5)}:${find.longitude.toFixed(5)}`;
+    const entry = buckets.get(key) ?? { total: 0, index: 0 };
+    entry.total += 1;
+    buckets.set(key, entry);
+  });
+
+  const indexMap = new Map();
+  return finds.map((find) => {
+    const key = `${find.latitude.toFixed(5)}:${find.longitude.toFixed(5)}`;
+    const entry = buckets.get(key);
+    if (!entry || entry.total === 1) {
+      return { ...find, jitteredLat: find.latitude, jitteredLng: find.longitude };
+    }
+    const currentIndex = indexMap.get(key) ?? 0;
+    indexMap.set(key, currentIndex + 1);
+    const radius = 0.0004 + entry.total * 0.0001;
+    const angle = (2 * Math.PI * currentIndex) / entry.total;
+    const latOffset = radius * Math.cos(angle);
+    const lngOffset = radius * Math.sin(angle);
+    return {
+      ...find,
+      jitteredLat: find.latitude + latOffset,
+      jitteredLng: find.longitude + lngOffset,
+    };
+  });
 }
