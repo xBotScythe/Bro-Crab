@@ -8,7 +8,8 @@ import discord
 
 DELETE_LOG_CHANNEL_ID = os.getenv("DELETE_LOG_CHANNEL_ID")
 LLM_ENDPOINT = os.getenv("LLM_REVIEW_ENDPOINT", "http://100.66.147.4:1234/v1/chat/completions")
-_LLM_LOCK = asyncio.Lock()
+_REVIEW_QUEUE = None
+_REVIEW_WORKER = None
 
 SERVER_RULES = """
 General Rules
@@ -39,11 +40,6 @@ Once you have introduced yourself, you will be granted access to the rest of the
 Contact the Staff Team
 If you'd like to submit a report, suggestion, or question to our team, please DM @unknown-role at the top of the right sidebar to activate Crabmail, which will let you forward your concerns to the right people on our staff team. We will discuss the situation with you and handle the situation as best we can.
 """
-
-
-# -------------------------------------------------------
-# INTERNAL HELPERS
-# -------------------------------------------------------
 
 async def _infer_deleter(message):
     guild = message.guild
@@ -130,23 +126,7 @@ def _prepare_payload(message):
 
 async def _review_with_llm(message):
     payload = _prepare_payload(message)
-    data = None
-
-    for attempt in range(3):
-        try:
-            async with _LLM_LOCK:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
-                        resp.raise_for_status()
-                        data = await _parse_llm_response(resp)
-            if data:
-                break
-        except Exception:
-            data = None
-
-        if attempt < 2:
-            await asyncio.sleep(1 + attempt)
-
+    data = await _request_llm(payload)
     if not data:
         return None
 
@@ -177,6 +157,57 @@ async def _review_with_llm(message):
         explanation = "rule violation" if recommend == "yes" else "no warning recommended"
 
     return {"recommend": recommend, "explanation": explanation}
+
+
+async def _request_llm(payload):
+    loop = asyncio.get_running_loop()
+    _ensure_review_worker(loop)
+    assert _REVIEW_QUEUE is not None
+
+    future = loop.create_future()
+    await _REVIEW_QUEUE.put((payload, future))
+    return await future
+
+
+def _ensure_review_worker(loop):
+    global _REVIEW_QUEUE, _REVIEW_WORKER
+    if _REVIEW_QUEUE is None:
+        _REVIEW_QUEUE = asyncio.Queue()
+    if _REVIEW_WORKER is None or _REVIEW_WORKER.done():
+        _REVIEW_WORKER = loop.create_task(_review_worker_loop())
+
+
+async def _review_worker_loop():
+    assert _REVIEW_QUEUE is not None
+    async with aiohttp.ClientSession() as session:
+        while True:
+            payload, future = await _REVIEW_QUEUE.get()
+            try:
+                data = await _send_llm_request(session, payload)
+            except Exception:
+                data = None
+
+            if not future.cancelled():
+                future.set_result(data)
+
+            _REVIEW_QUEUE.task_done()
+
+
+async def _send_llm_request(session, payload):
+    for attempt in range(3):
+        try:
+            async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
+                resp.raise_for_status()
+                data = await _parse_llm_response(resp)
+            if data:
+                return data
+        except Exception:
+            data = None
+
+        if attempt < 2:
+            await asyncio.sleep(1 + attempt)
+
+    return None
 
 
 async def _parse_llm_response(resp: aiohttp.ClientResponse):
