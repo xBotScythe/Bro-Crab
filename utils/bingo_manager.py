@@ -10,6 +10,7 @@ from utils.json_manager import load_json_async, write_json_async
 USER_DATA_FILE = "data/user_data.json"
 SERVER_DATA_FILE = "data/server_data.json"
 FREE_SPACE_LABEL = "Free Space"
+FONT_PATH = "data/comicsans.ttf"
 
 
 def _now_iso():
@@ -114,69 +115,82 @@ def _wrap_text(label: str, font: ImageFont.ImageFont, max_width: int):
 
 
 def _load_font(size: int):
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size=size)
-    except OSError:
+    for path in (FONT_PATH, "DejaVuSans-Bold.ttf", "Arial.ttf"):
         try:
-            return ImageFont.truetype("Arial.ttf", size=size)
+            return ImageFont.truetype(path, size=size)
         except OSError:
-            return ImageFont.load_default()
+            continue
+    return ImageFont.load_default()
 
 
 def render_board(board: Dict):
     size = board.get("size", 5)
     cells = board.get("cells", [])
+    cell_size = 280 if size == 3 else 230
     margin = 80
-    gap = 16
-    base_cell = 320
-    cell_size = max(220, base_cell - (size - 3) * 40)
-    width = margin * 2 + size * cell_size + (size - 1) * gap
-    height = width + 180
+    header_space = 180
+    grid_left = margin
+    grid_top = margin + header_space
+    grid_right = grid_left + size * cell_size
+    grid_bottom = grid_top + size * cell_size
+    width = grid_right + margin
+    height = grid_bottom + margin
 
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
-    title_font = _load_font(80)
-    subtitle_font = _load_font(40)
-    cell_font_size = max(48, int(cell_size * 0.22))
-    cell_font = _load_font(cell_font_size)
+    header_letters = "BINGO"[:size]
+    header_font = _load_font(int(cell_size * 0.35))
+    letter_color = (20, 24, 36)
+    for idx, letter in enumerate(header_letters):
+        center_x = grid_left + idx * cell_size + cell_size / 2
+        bbox = header_font.getbbox(letter)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = center_x - text_width / 2
+        text_y = margin
+        draw.text((text_x, text_y), letter, fill=letter_color, font=header_font)
 
-    title = "Mountain Dew Bingo"
-    title_bbox = title_font.getbbox(title)
-    title_width = title_bbox[2] - title_bbox[0]
-    title_x = (width - title_width) / 2
-    draw.text((title_x, 40), title, fill=(0, 0, 0), font=title_font)
+    line_color = (206, 212, 218)
+    draw.rounded_rectangle((grid_left, grid_top, grid_right, grid_bottom), radius=50, outline=line_color, width=6)
+    for i in range(1, size):
+        y = grid_top + i * cell_size
+        draw.line((grid_left, y, grid_right, y), fill=line_color, width=4)
+        x = grid_left + i * cell_size
+        draw.line((x, grid_top, x, grid_bottom), fill=line_color, width=4)
 
-    board_top = 230
+    cell_font = _load_font(max(72, int(cell_size * 0.28)))
+
     for index, cell in enumerate(cells):
         row, col = divmod(index, size)
-        x0 = margin + col * (cell_size + gap)
-        y0 = board_top + row * (cell_size + gap)
+        x0 = grid_left + col * cell_size
+        y0 = grid_top + row * cell_size
         x1 = x0 + cell_size
         y1 = y0 + cell_size
 
-        fill_color = (245, 245, 245) if not cell.get("marked") else (220, 240, 220)
-        outline_color = (0, 0, 0)
-        draw.rounded_rectangle((x0, y0, x1, y1), radius=28, fill=fill_color, outline=outline_color, width=5)
+        if cell.get("marked"):
+            fill_box = (x0 + 12, y0 + 12, x1 - 12, y1 - 12)
+            draw.rounded_rectangle(fill_box, radius=30, fill=(234, 244, 234))
 
         label = cell.get("label", "")
-        lines = _wrap_text(label, cell_font, cell_size - 60)
+        lines = _wrap_text(label, cell_font, cell_size - 80)
         text = "\n".join(lines)
         text_bbox = draw.multiline_textbbox((0, 0), text, font=cell_font, align="center")
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         text_x = x0 + (cell_size - text_width) / 2
         text_y = y0 + (cell_size - text_height) / 2
-        draw.multiline_text((text_x, text_y), text, fill=(0, 0, 0), font=cell_font, align="center")
+        draw.multiline_text((text_x, text_y), text, fill=letter_color, font=cell_font, align="center")
 
         if cell.get("marked"):
             line_y = y0 + cell_size / 2
-            draw.line((x0 + 24, line_y, x1 - 24, line_y), fill=(200, 0, 0), width=10)
+            draw.line((x0 + 40, line_y, x1 - 40, line_y), fill=(200, 0, 0), width=12)
 
     updated_at = board.get("updated_at")
     if updated_at:
+        date_font = _load_font(36)
         stamp = f"Updated: {updated_at.split('T')[0]}"
-        draw.text((margin, height - 70), stamp, fill=(80, 80, 80), font=subtitle_font)
+        draw.text((grid_left, grid_bottom + 20), stamp, fill=(120, 120, 120), font=date_font)
 
     output = BytesIO()
     image.save(output, format="PNG")
