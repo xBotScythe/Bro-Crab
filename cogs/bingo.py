@@ -49,5 +49,17 @@ class Bingo(commands.Cog):
             notice = f"New {board_size}×{board_size} board ready. Free space is already covered, go find those Dew flavors!"
         await self._send_board(interaction, board, notice)
 
+    @app_commands.command(name="viewbingoboard", description="View your current bingo board.")
+    async def viewbingoboard(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if not interaction.guild_id:
+            await interaction.followup.send("This command only works inside a server.", ephemeral=True)
+            return
+        board = await get_board(interaction.guild_id, interaction.user.id)
+        if not board:
+            await interaction.followup.send("You don't have a board yet. Run /bingocreate first!", ephemeral=True)
+            return
+        await self._send_board(interaction, board)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Bingo(bot))

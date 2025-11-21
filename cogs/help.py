@@ -43,6 +43,7 @@ HELP_PAGES = [
             ("/flavorstats", "see stats for a flavor"),
             ("/buildusertierlist", "build your personal tier list"),
             ("/bingocreate", "create a new Mountain Dew bingo board"),
+            ("/viewbingoboard", "view your current board image"),
         ],
     ),
     (
