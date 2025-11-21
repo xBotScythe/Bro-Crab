@@ -25,6 +25,7 @@ class Admin(commands.Cog):
         self.boomer_role_id = int(boomer_role_id) if boomer_role_id and boomer_role_id.isdigit() else None
         warn_channel_id = os.getenv("WARN_LOG_CHANNEL_ID")
         self.warn_channel_id = int(warn_channel_id) if warn_channel_id and warn_channel_id.isdigit() else None
+        self.default_boomer_role = 650210167950147585
 
     async def _store_roles(self, guild_id: int, user_id: int, role_ids: List[int], channel_id: Optional[int] = None):
         # track removed roles for future restore
@@ -194,43 +195,79 @@ class Admin(commands.Cog):
         else:
             await self._handle_boomer_end(interaction, user, channel)
 
-    async def _handle_boomer_start(self, interaction: discord.Interaction, member: Optional[discord.Member]):
-        if member is None:
-            await interaction.followup.send("Provide a member to start the boomer process.", ephemeral=True)
+    @app_commands.command(name="addautoboomer", description="Automatically boomer a member whenever they join.")
+    async def addautoboomer(self, interaction: discord.Interaction, member: discord.Member):
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message(
+                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
+                ephemeral=True,
+            )
             return
-        guild = interaction.guild
-        boomer_role = guild.get_role(self.boomer_role_id) if guild else None
+        await interaction.response.defer(ephemeral=True)
+        data = await load_json_async(SERVER_DATA_FILE)
+        guild_entry = data.setdefault(str(interaction.guild_id), {})
+        auto_list = guild_entry.setdefault("auto_boomer_ids", [])
+        if member.id in auto_list:
+            await interaction.followup.send(f"{member.display_name} is already auto-boomered.", ephemeral=True)
+            return
+        auto_list.append(member.id)
+        await write_json_async(data, SERVER_DATA_FILE)
+        await interaction.followup.send(f"{member.mention} will now be automatically boomered on join.", ephemeral=True)
+
+    async def _perform_boomer_start(
+        self,
+        guild: Optional[discord.Guild],
+        member: Optional[discord.Member],
+        actor: Optional[discord.abc.User],
+        channel_id: Optional[int],
+    ):
+        if guild is None or member is None:
+            return False, "Missing guild or member."
+        bot_member = guild.me
+        if bot_member is None:
+            return False, "Bot member missing in guild."
+        boomer_role_id = self.boomer_role_id or self.default_boomer_role
+        boomer_role = guild.get_role(boomer_role_id)
         if not boomer_role:
-            await interaction.followup.send("Boomer role not found in this guild.", ephemeral=True)
-            return
+            return False, "Boomer role not found in this guild."
 
         removable_roles = [
             role for role in member.roles
-            if not role.is_default() and role < guild.me.top_role and role.id != boomer_role.id
+            if not role.is_default() and role < bot_member.top_role and role.id != boomer_role.id
         ]
         if removable_roles:
             try:
-                await member.remove_roles(*removable_roles, reason=f"Boomer start triggered by {interaction.user}")
+                await member.remove_roles(*removable_roles, reason=f"Boomer start triggered by {actor or guild.me}")
             except discord.HTTPException as exc:
-                await interaction.followup.send(f"Failed to remove roles: {exc}", ephemeral=True)
-                return
+                return False, f"Failed to remove roles: {exc}"
 
         try:
             await member.add_roles(boomer_role, reason="Boomer start role assignment")
         except discord.HTTPException as exc:
-            await interaction.followup.send(f"Failed to assign boomer role: {exc}", ephemeral=True)
-            return
+            return False, f"Failed to assign boomer role: {exc}"
 
-        channel_id = interaction.channel.id if interaction.channel else None
         await self._store_roles(guild.id, member.id, [r.id for r in removable_roles], channel_id=channel_id)
         msg = f"Assigned {boomer_role.mention} to {member.mention}."
         if removable_roles:
             msg = f"Stored {len(removable_roles)} roles and " + msg
-        await interaction.followup.send(msg, ephemeral=True)
+        return True, msg
+
+    async def _handle_boomer_start(self, interaction: discord.Interaction, member: Optional[discord.Member]):
+        if member is None:
+            await interaction.followup.send("Provide a member to start the boomer process.", ephemeral=True)
+            return
+        success, message = await self._perform_boomer_start(
+            interaction.guild, member, interaction.user, interaction.channel.id if interaction.channel else None
+        )
+        if not success:
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.followup.send(message, ephemeral=True)
 
     async def _handle_boomer_end(self, interaction: discord.Interaction, member: Optional[discord.Member], channel: Optional[discord.TextChannel] = None):
         guild = interaction.guild
-        boomer_role = guild.get_role(self.boomer_role_id) if guild else None
+        boomer_role_id = self.boomer_role_id or self.default_boomer_role
+        boomer_role = guild.get_role(boomer_role_id) if guild else None
 
         member_id = member.id if member else None
         stored_payload = None
@@ -307,6 +344,19 @@ class Admin(commands.Cog):
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
         await self._auto_end_boomer(guild, user.id, "member was banned")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        data = await load_json_async(SERVER_DATA_FILE)
+        guild_entry = data.get(str(member.guild.id), {})
+        auto_ids = guild_entry.get("auto_boomer_ids", [])
+        if member.id not in auto_ids:
+            return
+        success, message = await self._perform_boomer_start(member.guild, member, self.bot.user, None)
+        if not success:
+            warn_channel = await self._get_warn_channel()
+            if warn_channel:
+                await warn_channel.send(f"Failed auto-boomer for {member.mention}: {message}")
 
     @app_commands.command(name="warn", description="Send a DM warning and log it.")
     @app_commands.describe(user="member to warn", reason="short explanation for the warning")
