@@ -1,3 +1,4 @@
+import json
 import os
 
 import aiohttp
@@ -160,9 +161,12 @@ async def _review_with_llm(message: discord.Message):
             payload = _prepare_payload(message)
             async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
                 resp.raise_for_status()
-                data = await resp.json()
+                data = await _parse_llm_response(resp)
         except Exception:
             return None
+
+    if not data:
+        return None
 
     try:
         content = data["choices"][0]["message"]["content"].strip()
@@ -173,3 +177,56 @@ async def _review_with_llm(message: discord.Message):
     recommend = "yes" if "yes" in lower else "no"
     explanation = content if recommend == "yes" else "no warning recommended"
     return {"recommend": recommend, "explanation": explanation}
+
+
+async def _parse_llm_response(resp: aiohttp.ClientResponse):
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/event-stream" in content_type:
+        return await _parse_sse_response(resp)
+    try:
+        return await resp.json()
+    except aiohttp.ContentTypeError:
+        return None
+
+
+async def _parse_sse_response(resp: aiohttp.ClientResponse):
+    buffer = ""
+    result_payload = None
+
+    async for chunk in resp.content.iter_chunked(1024):
+        try:
+            buffer += chunk.decode("utf-8")
+        except UnicodeDecodeError:
+            buffer += chunk.decode("utf-8", errors="ignore")
+
+        while "\n\n" in buffer:
+            block, buffer = buffer.split("\n\n", 1)
+            event_type = "message"
+            data_lines = []
+
+            for line in block.splitlines():
+                line = line.strip()
+                if not line or line.startswith(":"):
+                    continue
+                if line.startswith("event:"):
+                    event_type = line.split(":", 1)[1].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line.split(":", 1)[1].strip())
+
+            data = "\n".join(data_lines).strip()
+            if not data:
+                continue
+
+            if event_type == "error":
+                raise RuntimeError(data)
+
+            if event_type in {"result", "message", "completion"}:
+                try:
+                    result_payload = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+
+            if event_type in {"done", "end", "finish"}:
+                return result_payload
+
+    return result_payload
