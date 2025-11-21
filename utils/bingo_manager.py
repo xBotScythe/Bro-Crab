@@ -45,7 +45,7 @@ def _build_cells_from_pool(pool: List[str], size: int):
     flavor_iter = iter(chosen)
     for idx in range(total_cells):
         if idx == center_index:
-            cells.append({"label": FREE_SPACE_LABEL, "marked": True})
+            cells.append({"label": FREE_SPACE_LABEL, "marked": False})
         else:
             cells.append({"label": next(flavor_iter), "marked": False})
     return cells
@@ -114,6 +114,24 @@ def _wrap_text(label: str, font: ImageFont.ImageFont, max_width: int):
     return lines
 
 
+def _fit_text(label: str, cell_size: int, draw: ImageDraw.ImageDraw):
+    max_width = cell_size - 100
+    max_height = cell_size - 40
+    size = max(54, int(cell_size * 0.23))
+    while size >= 28:
+        font = _load_font(size)
+        lines = _wrap_text(label, font, max_width)
+        text = "\n".join(lines)
+        bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center", spacing=6)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if width <= max_width and height <= max_height:
+            return lines, font
+        size -= 2
+    font = _load_font(28)
+    return _wrap_text(label, font, max_width), font
+
+
 def _load_font(size: int):
     for path in (FONT_PATH, "DejaVuSans-Bold.ttf", "Arial.ttf"):
         try:
@@ -159,8 +177,6 @@ def render_board(board: Dict):
         x = grid_left + i * cell_size
         draw.line((x, grid_top, x, grid_bottom), fill=line_color, width=4)
 
-    cell_font = _load_font(max(60, int(cell_size * 0.22)))
-
     for index, cell in enumerate(cells):
         row, col = divmod(index, size)
         x0 = grid_left + col * cell_size
@@ -173,14 +189,14 @@ def render_board(board: Dict):
             draw.rounded_rectangle(fill_box, radius=30, fill=(234, 244, 234))
 
         label = cell.get("label", "")
-        lines = _wrap_text(label, cell_font, cell_size - 100)
+        lines, text_font = _fit_text(label, cell_size, draw)
         text = "\n".join(lines)
-        text_bbox = draw.multiline_textbbox((0, 0), text, font=cell_font, align="center")
+        text_bbox = draw.multiline_textbbox((0, 0), text, font=text_font, align="center", spacing=6)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         text_x = x0 + (cell_size - text_width) / 2
         text_y = y0 + (cell_size - text_height) / 2
-        draw.multiline_text((text_x, text_y), text, fill=letter_color, font=cell_font, align="center")
+        draw.multiline_text((text_x, text_y), text, fill=letter_color, font=text_font, align="center", spacing=6)
 
         if cell.get("marked"):
             line_y = y0 + cell_size / 2
