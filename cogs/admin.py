@@ -26,14 +26,15 @@ class Admin(commands.Cog):
         warn_channel_id = os.getenv("WARN_LOG_CHANNEL_ID")
         self.warn_channel_id = int(warn_channel_id) if warn_channel_id and warn_channel_id.isdigit() else None
 
-    async def _store_roles(self, guild_id: int, user_id: int, role_ids: List[int]):
+    async def _store_roles(self, guild_id: int, user_id: int, role_ids: List[int], channel_id: Optional[int] = None):
         # track removed roles for future restore
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.setdefault(str(guild_id), {})
         user_entry = guild_entry.setdefault(str(user_id), {})
         user_entry["boomer_roles"] = {
             "roles": role_ids,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "channel_id": channel_id,
         }
         await write_json_async(data, USER_DATA_FILE)
 
@@ -60,13 +61,25 @@ class Admin(commands.Cog):
         return None
 
     async def _archive_current_channel(self, interaction: discord.Interaction):
-        # rename, move to archive, and spawn fresh lightning-general
-        channel = interaction.channel
-        guild = interaction.guild
-        if channel is None or guild is None:
+        if not interaction.guild or not interaction.channel:
             return
+        success, message = await self._archive_channel_logic(interaction.guild, interaction.channel)
+        if not success and message:
+            await interaction.followup.send(message, ephemeral=True)
+
+    async def _archive_channel_by_id(self, guild: discord.Guild, channel_id: Optional[int]):
+        if guild is None:
+            return
+        channel = guild.get_channel(channel_id) if channel_id else None
+        if channel is None:
+            channel = discord.utils.get(guild.text_channels, name=NEW_CHANNEL_NAME)
+        await self._archive_channel_logic(guild, channel)
+
+    async def _archive_channel_logic(self, guild: discord.Guild, channel: Optional[discord.abc.GuildChannel]):
+        if guild is None or channel is None:
+            return False, "Unable to archive channel: missing reference."
         server_data = await load_json_async(SERVER_DATA_FILE)
-        guild_entry = server_data.setdefault(str(interaction.guild_id), {})
+        guild_entry = server_data.setdefault(str(guild.id), {})
         archive_state = guild_entry.setdefault("lightning_archive", {})
         next_number = archive_state.get("next_number", DEFAULT_ARCHIVE_START)
         new_name = f"lightning-archive-{next_number}"
@@ -77,8 +90,7 @@ class Admin(commands.Cog):
             elif isinstance(channel, discord.TextChannel):
                 await channel.edit(name=new_name, reason="boomer archive rotate")
         except discord.HTTPException as exc:
-            await interaction.followup.send(f"Archive rename failed: {exc}", ephemeral=True)
-            return
+            return False, f"Archive rename failed: {exc}"
 
         if isinstance(channel, discord.TextChannel):
             archive_category = self._get_category(guild, ARCHIVE_CATEGORY_NAME)
@@ -97,12 +109,12 @@ class Admin(commands.Cog):
             try:
                 await guild.create_text_channel(**kwargs)
             except discord.HTTPException as exc:
-                await interaction.followup.send(f"Could not create #{NEW_CHANNEL_NAME}: {exc}", ephemeral=True)
-                return
+                return False, f"Could not create #{NEW_CHANNEL_NAME}: {exc}"
 
         archive_state["next_number"] = next_number + 1
         guild_entry["lightning_archive"] = archive_state
         await write_json_async(server_data, SERVER_DATA_FILE)
+        return True, None
 
     async def _get_warn_channel(self) -> Optional[discord.TextChannel]:
         # resolve cross-server warn log channel
@@ -169,7 +181,8 @@ class Admin(commands.Cog):
             await interaction.followup.send(f"Failed to assign boomer role: {exc}", ephemeral=True)
             return
 
-        await self._store_roles(guild.id, member.id, [r.id for r in removable_roles])
+        channel_id = interaction.channel.id if interaction.channel else None
+        await self._store_roles(guild.id, member.id, [r.id for r in removable_roles], channel_id=channel_id)
         msg = f"Assigned {boomer_role.mention} to {member.mention}."
         if removable_roles:
             msg = f"Stored {len(removable_roles)} roles and " + msg
@@ -212,6 +225,26 @@ class Admin(commands.Cog):
         if missing:
             summary += f" {len(missing)} roles were missing or higher than me and could not be restored."
         await interaction.followup.send(summary, ephemeral=True)
+
+    async def _auto_end_boomer(self, guild: discord.Guild, user_id: int, reason: str):
+        if guild is None:
+            return
+        stored_payload = await self._pop_stored_roles(guild.id, user_id)
+        if stored_payload is None:
+            return
+        channel_id = stored_payload.get("channel_id")
+        await self._archive_channel_by_id(guild, channel_id)
+        warn_channel = await self._get_warn_channel()
+        if warn_channel:
+            await warn_channel.send(f"Boomer workflow auto-ended for <@{user_id}> ({reason}).")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        await self._auto_end_boomer(member.guild, member.id, "member left the server")
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        await self._auto_end_boomer(guild, user.id, "member was banned")
 
     @app_commands.command(name="warn", description="Send a DM warning and log it.")
     @app_commands.describe(user="member to warn", reason="short explanation for the warning")
