@@ -55,6 +55,7 @@ class DewFindModal(discord.ui.Modal):
             lat,
             lon,
             tz_name,
+            str(interaction.user),
         )
         await interaction.followup.send(f"Logged find **{find_id}** at {self.place_input.value.strip()}!", ephemeral=True)
         await self.cog.maybe_update_bingo(interaction, self.flavor)

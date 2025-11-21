@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS finds (
     longitude REAL NOT NULL,
     image_url TEXT,
     time_zone TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    submitted_by TEXT
 );
 """
 
@@ -44,6 +45,8 @@ def _ensure_columns(conn):
     columns = {row[1] for row in cur.fetchall()}
     if "time_zone" not in columns:
         conn.execute("ALTER TABLE finds ADD COLUMN time_zone TEXT")
+    if "submitted_by" not in columns:
+        conn.execute("ALTER TABLE finds ADD COLUMN submitted_by TEXT")
     conn.commit()
 
 
@@ -83,7 +86,7 @@ def list_flavors():
         return [row["name"] for row in cur.fetchall()]
 
 
-def create_find(flavor, size, location_name, address, latitude, longitude, time_zone=None):
+def create_find(flavor, size, location_name, address, latitude, longitude, time_zone=None, submitted_by=None):
     init_db()
     find_id = str(uuid.uuid4())[:8]
     created_at = datetime.now(timezone.utc).isoformat()
@@ -91,10 +94,10 @@ def create_find(flavor, size, location_name, address, latitude, longitude, time_
         _prune_old_finds(conn)
         conn.execute(
             """
-            INSERT INTO finds (id, flavor, size, location_name, address, latitude, longitude, image_url, time_zone, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+            INSERT INTO finds (id, flavor, size, location_name, address, latitude, longitude, image_url, time_zone, created_at, submitted_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
             """,
-            (find_id, flavor, size, location_name, address, latitude, longitude, time_zone, created_at),
+            (find_id, flavor, size, location_name, address, latitude, longitude, time_zone, created_at, submitted_by),
         )
         conn.commit()
     return find_id
