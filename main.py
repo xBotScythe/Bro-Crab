@@ -84,9 +84,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 async def on_member_join(member: discord.Member):
     try:
         await handle_member_join(bot, member)
-        if(member.id == 650210167950147585):
+        if(member.id == 650210167950147585): # if halfgood joins
             guild = bot.get_guild(462835111235289109)
-            member.add_roles(guild.get_role(1441518238881157322))
+            await member.add_roles(guild.get_role(1441518238881157322)) # give reddit role lmfao
     except Exception as e:
         print(f"Failed to send welcome embed for {member}: {e}")
 
