@@ -8,8 +8,8 @@ import discord
 
 DELETE_LOG_CHANNEL_ID = os.getenv("DELETE_LOG_CHANNEL_ID")
 LLM_ENDPOINT = os.getenv("LLM_REVIEW_ENDPOINT", "http://100.66.147.4:1234/v1/chat/completions")
-_REVIEW_QUEUE = None
-_REVIEW_WORKER = None
+_LLM_LOCK = asyncio.Lock()
+_LAST_LLM_CALL = 0.0
 
 SERVER_RULES = """
 General Rules
@@ -126,7 +126,7 @@ def _prepare_payload(message):
 
 async def _review_with_llm(message):
     payload = _prepare_payload(message)
-    data = await _request_llm(payload)
+    data = await _call_llm_serialized(payload)
     if not data:
         return None
 
@@ -159,46 +159,26 @@ async def _review_with_llm(message):
     return {"recommend": recommend, "explanation": explanation}
 
 
-async def _request_llm(payload):
-    loop = asyncio.get_running_loop()
-    _ensure_review_worker(loop)
-    assert _REVIEW_QUEUE is not None
+async def _call_llm_serialized(payload):
+    global _LAST_LLM_CALL
+    async with _LLM_LOCK:
+        # basic anti-spam delay so LM Studio has time to reset context
+        elapsed = time.monotonic() - _LAST_LLM_CALL
+        if elapsed < 0.5:
+            await asyncio.sleep(0.5 - elapsed)
 
-    future = loop.create_future()
-    await _REVIEW_QUEUE.put((payload, future))
-    return await future
-
-
-def _ensure_review_worker(loop):
-    global _REVIEW_QUEUE, _REVIEW_WORKER
-    if _REVIEW_QUEUE is None:
-        _REVIEW_QUEUE = asyncio.Queue()
-    if _REVIEW_WORKER is None or _REVIEW_WORKER.done():
-        _REVIEW_WORKER = loop.create_task(_review_worker_loop())
+        data = await _send_llm_request(payload)
+        _LAST_LLM_CALL = time.monotonic()
+        return data
 
 
-async def _review_worker_loop():
-    assert _REVIEW_QUEUE is not None
-    async with aiohttp.ClientSession() as session:
-        while True:
-            payload, future = await _REVIEW_QUEUE.get()
-            try:
-                data = await _send_llm_request(session, payload)
-            except Exception:
-                data = None
-
-            if not future.cancelled():
-                future.set_result(data)
-
-            _REVIEW_QUEUE.task_done()
-
-
-async def _send_llm_request(session, payload):
+async def _send_llm_request(payload):
     for attempt in range(3):
         try:
-            async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
-                resp.raise_for_status()
-                data = await _parse_llm_response(resp)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(LLM_ENDPOINT, json=payload, timeout=60) as resp:
+                    resp.raise_for_status()
+                    data = await _parse_llm_response(resp)
             if data:
                 return data
         except Exception:
