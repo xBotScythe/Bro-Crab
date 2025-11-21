@@ -52,14 +52,16 @@ class Admin(commands.Cog):
         await write_json_async(data, USER_DATA_FILE)
         return stored
 
-    async def _pop_stored_roles_by_channel(self, guild_id: int, channel_id: Optional[int]):
-        if channel_id is None:
-            return None, None
+    async def _pop_stored_roles_by_channel(self, guild_id: int, channel_id: Optional[int], allow_any: bool = False):
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.get(str(guild_id), {})
+        candidates = []
         for user_id, info in list(guild_entry.items()):
             stored = info.get("boomer_roles")
-            if stored and stored.get("channel_id") == channel_id:
+            if not stored:
+                continue
+            entry_channel = stored.get("channel_id")
+            if channel_id is not None and entry_channel == channel_id:
                 info.pop("boomer_roles", None)
                 if not info:
                     guild_entry.pop(user_id, None)
@@ -67,6 +69,17 @@ class Admin(commands.Cog):
                     data.pop(str(guild_id), None)
                 await write_json_async(data, USER_DATA_FILE)
                 return stored, int(user_id)
+            candidates.append((user_id, stored))
+        if allow_any and candidates:
+            user_id, stored = candidates[0]
+            info = guild_entry.get(user_id, {})
+            info.pop("boomer_roles", None)
+            if not info:
+                guild_entry.pop(user_id, None)
+            if not guild_entry:
+                data.pop(str(guild_id), None)
+            await write_json_async(data, USER_DATA_FILE)
+            return stored, int(user_id)
         return None, None
 
     def _get_category(self, guild: discord.Guild, name: str) -> Optional[discord.CategoryChannel]:
@@ -230,10 +243,13 @@ class Admin(commands.Cog):
             stored_payload = await self._pop_stored_roles(guild.id, member_id)
         else:
             resolved_channel_id = channel.id if channel else (interaction.channel.id if interaction.channel else None)
-            stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(guild.id, resolved_channel_id)
+            stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(
+                guild.id, resolved_channel_id, allow_any=True
+            )
 
         if stored_payload is None:
-            await interaction.followup.send("No stored roles found for that member.", ephemeral=True)
+            guidance = "Provide a member or channel for the boomer session you're trying to end."
+            await interaction.followup.send(f"No stored roles found for that member. {guidance}", ephemeral=True)
             return
         stored_role_ids = stored_payload.get("roles", [])
         channel_id = stored_payload.get("channel_id")
