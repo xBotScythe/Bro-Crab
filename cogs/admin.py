@@ -301,8 +301,22 @@ class Admin(commands.Cog):
             )
 
         if stored_payload is None:
-            guidance = "Provide a member or channel for the boomer session you're trying to end."
-            await interaction.followup.send(f"No stored roles found for that member. {guidance}", ephemeral=True)
+            fallback_channel = resolved_channel_id or (interaction.channel.id if interaction.channel else None)
+            if fallback_channel:
+                success, message = await self._archive_channel_by_id(guild, fallback_channel)
+                if success:
+                    await interaction.followup.send(
+                        "No stored roles were found, but the provided channel was archived.",
+                        ephemeral=True,
+                    )
+                    return
+                if message:
+                    await interaction.followup.send(message, ephemeral=True)
+                    return
+            await interaction.followup.send(
+                "No active boomer sessions were located. Specify a member or channel tied to an existing session.",
+                ephemeral=True,
+            )
             return
         stored_role_ids = stored_payload.get("roles", [])
         channel_id = stored_payload.get("channel_id")
