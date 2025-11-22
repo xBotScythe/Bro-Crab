@@ -9,6 +9,9 @@ from timezonefinder import TimezoneFinder
 from utils.dew_map_manager import add_flavors, remove_flavors, list_flavors, create_find, update_find_image, delete_find
 from utils.admin_manager import check_admin_status
 from utils.bingo_manager import mark_flavor, render_board
+from better_profanity import profanity
+
+profanity.load_censor_words()
 
 
 geolocator = Nominatim(user_agent="dew-map-bot")
@@ -41,7 +44,12 @@ class DewFindModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        coords = await geocode_address(self.address_input.value.strip())
+        place = self.place_input.value.strip()
+        address = self.address_input.value.strip()
+        if profanity.contains_profanity(place) or profanity.contains_profanity(address):
+            await interaction.followup.send("Keep it clean yo. Try a different description/address.", ephemeral=True)
+            return
+        coords = await geocode_address(address)
         if not coords:
             await interaction.followup.send("Couldn't verify that address. Please double-check and try again.", ephemeral=True)
             return
@@ -50,14 +58,14 @@ class DewFindModal(discord.ui.Modal):
         find_id = create_find(
             self.flavor,
             self.size,
-            self.place_input.value.strip(),
-            self.address_input.value.strip(),
+            place,
+            address,
             lat,
             lon,
             tz_name,
             str(interaction.user),
         )
-        await interaction.followup.send(f"Logged find **{find_id}** at {self.place_input.value.strip()}!", ephemeral=True)
+        await interaction.followup.send(f"Logged find **{find_id}** at {place}!", ephemeral=True)
         await self.cog.maybe_update_bingo(interaction, self.flavor)
         await self.cog.prompt_for_image(interaction.user, find_id)
 

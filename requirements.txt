@@ -30,6 +30,7 @@ multidict==6.6.0
 numpy==2.3.5
 pillow==11.2.1
 propcache==0.3.2
+better-profanity==0.7.0
 pycparser==2.23
 pydantic==2.12.4
 pydantic_core==2.41.5

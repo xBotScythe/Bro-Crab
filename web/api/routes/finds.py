@@ -10,6 +10,9 @@ from timezonefinder import TimezoneFinder
 
 from maps.mapgen import fetch_finds
 from utils.dew_map_manager import create_find, list_flavors, update_find_image
+from better_profanity import profanity
+
+profanity.load_censor_words()
 from web.api.schemas import Find
 
 router = APIRouter(tags=["finds"])
@@ -59,11 +62,16 @@ async def create_web_find(
     lat, lon = coords
     tz_name = tz_finder.timezone_at(lat=lat, lng=lon) or "UTC"
 
+    clean_location = locationName.strip()
+    clean_address = address.strip()
+    if profanity.contains_profanity(clean_location) or profanity.contains_profanity(clean_address):
+        raise HTTPException(status_code=400, detail="invalid_text")
+
     find_id = create_find(
         flavor,
         size,
-        locationName,
-        address,
+        clean_location,
+        clean_address,
         lat,
         lon,
         tz_name,
