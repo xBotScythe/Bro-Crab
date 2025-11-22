@@ -88,9 +88,10 @@ class Contest(commands.Cog):
         if not await check_admin_status(self.bot, interaction):
             await interaction.response.send_message("Missing permissions.", ephemeral=True)
             return
-        design_channel = await self._get_channel(CONTEST_DESIGN_CHANNEL_ID)
-        if design_channel is None:
-            await interaction.response.send_message("Design showcase channel not configured.", ephemeral=True)
+        contest = await cm.load_contest(interaction.guild_id)
+        contest_channel = await self._get_channel(contest.get("channel_id"))
+        if contest_channel is None:
+            await interaction.response.send_message("Contest channel not configured.", ephemeral=True)
             return
         queue = await cm.get_design_queue(interaction.guild_id)
         if not queue:
@@ -106,7 +107,7 @@ class Contest(commands.Cog):
                 color=discord.Color.blurple(),
             )
             embed.set_image(url=entry["url"])
-            message = await design_channel.send(embed=embed)
+            message = await contest_channel.send(embed=embed)
             await message.add_reaction("\u2B06\uFE0F")
             await cm.record_released_design(
                 interaction.guild_id,
@@ -115,7 +116,7 @@ class Contest(commands.Cog):
                     "flavor_name": entry["flavor_name"],
                     "url": entry["url"],
                     "message_id": message.id,
-                    "channel_id": design_channel.id,
+                    "channel_id": contest_channel.id,
                 },
             )
         await interaction.response.send_message("Designs released!", ephemeral=True)
@@ -138,10 +139,15 @@ class Contest(commands.Cog):
         top_entry = None
         top_votes = -1
         for design in designs:
+            if not design.get("message_id") or not design.get("channel_id"):
+                continue
             votes = await self._count_design_votes(design)
             if votes > top_votes:
                 top_entry = design
                 top_votes = votes
+        if top_entry is None:
+            await interaction.response.send_message("No released designs have vote data yet.", ephemeral=True)
+            return
         if top_entry and win_channel:
             winner_member = interaction.guild.get_member(top_entry["author_id"])
             win_embed = discord.Embed(
@@ -179,11 +185,15 @@ class Contest(commands.Cog):
 
     async def _count_design_votes(self, design_entry):
         # fetch arrow-up reactions for released design messages
-        channel = await self._get_channel(design_entry.get("channel_id") or CONTEST_DESIGN_CHANNEL_ID)
+        channel_id = design_entry.get("channel_id") or CONTEST_DESIGN_CHANNEL_ID
+        message_id = design_entry.get("message_id")
+        if not channel_id or not message_id:
+            return 0
+        channel = await self._get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             return 0
         try:
-            message = await channel.fetch_message(design_entry["message_id"])
+            message = await channel.fetch_message(message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return 0
         for reaction in message.reactions:
