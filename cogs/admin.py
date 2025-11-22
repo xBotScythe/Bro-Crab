@@ -104,7 +104,7 @@ class Admin(commands.Cog):
         channel = guild.get_channel(channel_id) if channel_id else None
         if channel is None:
             channel = discord.utils.get(guild.text_channels, name=NEW_CHANNEL_NAME)
-        await self._archive_channel_logic(guild, channel)
+        return await self._archive_channel_logic(guild, channel)
 
     async def _archive_channel_logic(self, guild: discord.Guild, channel: Optional[discord.abc.GuildChannel]):
         if guild is None or channel is None:
@@ -288,6 +288,7 @@ class Admin(commands.Cog):
         member_id = member.id if member else None
         stored_payload = None
         resolved_user_id = member_id
+        resolved_channel_id = channel.id if channel else (interaction.channel.id if interaction.channel else None)
         if guild is None:
             await interaction.followup.send("Unable to resolve guild for boomer end.", ephemeral=True)
             return
@@ -295,7 +296,6 @@ class Admin(commands.Cog):
         if member_id is not None:
             stored_payload = await self._pop_stored_roles(guild.id, member_id)
         if stored_payload is None:
-            resolved_channel_id = channel.id if channel else (interaction.channel.id if interaction.channel else None)
             stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(
                 guild.id, resolved_channel_id, allow_any=True
             )
@@ -338,7 +338,10 @@ class Admin(commands.Cog):
             summary = f"No member supplied; skipped role restoration for {target}."
 
         archive_target = channel_id or (channel.id if channel else None) or (interaction.channel.id if interaction.channel else None)
-        await self._archive_channel_by_id(guild, archive_target)
+        success, message = await self._archive_channel_by_id(guild, archive_target)
+        if not success and message:
+            await interaction.followup.send(message, ephemeral=True)
+            return
         await interaction.followup.send(summary, ephemeral=True)
 
     async def _auto_end_boomer(self, guild: discord.Guild, user_id: int, reason: str):
