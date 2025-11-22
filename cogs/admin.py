@@ -294,7 +294,7 @@ class Admin(commands.Cog):
 
         if member_id is not None:
             stored_payload = await self._pop_stored_roles(guild.id, member_id)
-        else:
+        if stored_payload is None:
             resolved_channel_id = channel.id if channel else (interaction.channel.id if interaction.channel else None)
             stored_payload, resolved_user_id = await self._pop_stored_roles_by_channel(
                 guild.id, resolved_channel_id, allow_any=True
