@@ -30,7 +30,7 @@ class ReplyModal(discord.ui.Modal, title="Reply as Bro Crab"):
         super().__init__()
         self.target_message = target_message
 
-    async def _download_image(self, url: str) -> discord.File:
+    async def _download_image(self, url: str) :
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url) as resp:

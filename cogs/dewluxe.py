@@ -13,7 +13,7 @@ class Dewluxe(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def _parse_color(self, raw: str) -> discord.Color:
+    async def _parse_color(self, raw: str) :
         value = raw.strip()
         hex_match = re.fullmatch(r"#?(?P<hex>[0-9a-fA-F]{6})", value)
         if hex_match:

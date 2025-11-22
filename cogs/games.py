@@ -22,7 +22,7 @@ class Games(commands.Cog):
         self.bot = bot
         self.cooldowns = {}
 
-    async def get_msg_count_roast(self, interaction: discord.Interaction, user: discord.Member, roasts: dict) -> str:
+    async def get_msg_count_roast(self, interaction: discord.Interaction, user: discord.Member, roasts: dict) :
         total_msgs = 0
         user_msgs = 0
         print(f"Fetching up to 5000 messages in #{interaction.channel.name}...")

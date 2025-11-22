@@ -1,3 +1,4 @@
+# thin wrapper around better_profanity so callsites stay simple
 from better_profanity import profanity as _profanity
 
 _profanity.load_censor_words()

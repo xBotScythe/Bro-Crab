@@ -44,8 +44,9 @@ class DewFindModal(discord.ui.Modal):
         await interaction.response.defer(ephemeral=True, thinking=True)
         place = clean_text(self.place_input.value)
         address = clean_text(self.address_input.value)
+        # refuse to log finds with spicy names or addresses
         if contains_profanity(place) or contains_profanity(address):
-            await interaction.followup.send("Keep it clean yo. Try a different description/address.", ephemeral=True)
+            await interaction.followup.send("Keep it clean, bro! Try a different description/address.", ephemeral=True)
             return
         coords = await geocode_address(address)
         if not coords:
@@ -71,7 +72,7 @@ class DewFindModal(discord.ui.Modal):
 class DewMap(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.pending_images = {}  # user_id -> find_id
+        self.pending_images = {}  # user_id 
 
     async def prompt_for_image(self, user: discord.User, find_id: str):
         try:
