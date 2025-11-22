@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 ARCHIVE_CATEGORY_NAME = "Lightning Archives"
 MAIN_CATEGORY_NAME = "Mountain Lightning"
 NEW_CHANNEL_NAME = "lightning-general"
+# admin cog: boomer flow, admin helpers, and logging
 
 import discord
 from discord import app_commands
@@ -29,7 +30,7 @@ class Admin(commands.Cog):
         self.default_boomer_role = 650210167950147585
 
     async def _store_roles(self, guild_id: int, user_id: int, role_ids: List[int], channel_id: Optional[int] = None):
-        # track removed roles for future restore
+        # stash removed roles + channel so we can restore later
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.setdefault(str(guild_id), {})
         user_entry = guild_entry.setdefault(str(user_id), {})
@@ -41,6 +42,7 @@ class Admin(commands.Cog):
         await write_json_async(data, USER_DATA_FILE)
 
     async def _pop_stored_roles(self, guild_id: int, user_id: int) :
+        # pull and drop stored payload for a given user
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.get(str(guild_id), {})
         user_entry = guild_entry.get(str(user_id), {})
@@ -55,6 +57,7 @@ class Admin(commands.Cog):
         return stored
 
     async def _pop_stored_roles_by_channel(self, guild_id: int, channel_id: Optional[int], allow_any: bool = False):
+        # find stored payload by recorded channel (fallback to any if allow_any)
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.get(str(guild_id), {})
         candidates = []
@@ -93,6 +96,7 @@ class Admin(commands.Cog):
         return None
 
     async def _archive_current_channel(self, interaction: discord.Interaction):
+        # helper that archives the channel tied to the interaction
         if not interaction.guild or not interaction.channel:
             return
         success, message = await self._archive_channel_logic(interaction.guild, interaction.channel)
@@ -100,6 +104,7 @@ class Admin(commands.Cog):
             await interaction.followup.send(message, ephemeral=True)
 
     async def _archive_channel_by_id(self, guild: discord.Guild, channel_id: Optional[int]):
+        # archive using stored channel id (or lightning-general fallback)
         if guild is None:
             return
         channel = guild.get_channel(channel_id) if channel_id else None
@@ -108,6 +113,7 @@ class Admin(commands.Cog):
         return await self._archive_channel_logic(guild, channel)
 
     async def _archive_channel_logic(self, guild: discord.Guild, channel: Optional[discord.abc.GuildChannel]):
+        # rename + move channel, spin up a fresh lightning-general if missing
         if guild is None or channel is None:
             return False, "Unable to archive channel: missing reference."
         server_data = await load_json_async(SERVER_DATA_FILE)
@@ -163,6 +169,7 @@ class Admin(commands.Cog):
 
     @app_commands.command(name="startboomer", description="Strip roles and assign the boomer role to a member.")
     async def startboomer(self, interaction: discord.Interaction, user: discord.Member):
+        # entrypoint to kick off boomer: strip roles, assign boomer role, store state
         if not interaction.guild:
             await interaction.response.send_message("This command can only be used in a guild.", ephemeral=True)
             return
@@ -193,6 +200,7 @@ class Admin(commands.Cog):
         user: Optional[discord.Member] = None,
         channel: Optional[discord.TextChannel] = None,
     ):
+        # end boomer: restore roles if user present, archive the lightning channel
         if not interaction.guild:
             await interaction.response.send_message("This command can only be used in a guild.", ephemeral=True)
             return
