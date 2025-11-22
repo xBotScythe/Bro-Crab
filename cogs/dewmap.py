@@ -9,9 +9,7 @@ from timezonefinder import TimezoneFinder
 from utils.dew_map_manager import add_flavors, remove_flavors, list_flavors, create_find, update_find_image, delete_find
 from utils.admin_manager import check_admin_status
 from utils.bingo_manager import mark_flavor, render_board
-from better_profanity import profanity
-
-profanity.load_censor_words()
+from utils.text_filters import clean_text, contains_profanity
 
 
 geolocator = Nominatim(user_agent="dew-map-bot")
@@ -44,9 +42,9 @@ class DewFindModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        place = self.place_input.value.strip()
-        address = self.address_input.value.strip()
-        if profanity.contains_profanity(place) or profanity.contains_profanity(address):
+        place = clean_text(self.place_input.value)
+        address = clean_text(self.address_input.value)
+        if contains_profanity(place) or contains_profanity(address):
             await interaction.followup.send("Keep it clean yo. Try a different description/address.", ephemeral=True)
             return
         coords = await geocode_address(address)
