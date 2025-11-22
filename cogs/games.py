@@ -212,7 +212,23 @@ class Games(commands.Cog):
 
         randomized = selected_author_id is None
         if randomized:
+            # just send a random quote (either not a booster or no user specified)
+            print("Randomized quote...")
             quote = random.choice(recall_data)
+            author_id = quote["msg_author_id"]
+            author = await self.get_display_name(interaction.guild, author_id)
+            print(author)
+            if ping:
+                await interaction.response.send_message(f'"{quote["content"]}" — <@{author_id}>')
+                if not is_valid_user:
+                    await set_cooldown(interaction)
+                    return
+            else:
+                await interaction.response.send_message(f'"{quote["content"]}" — {author}')
+            if not is_valid_user:
+                await set_cooldown(interaction)
+            return
+
         else:
             filtered_recall = [q for q in recall_data if str(q.get("msg_author_id")) == selected_author_id]
             if not filtered_recall:
@@ -244,20 +260,6 @@ class Games(commands.Cog):
             view = View()
             view.add_item(select)  # add select to the view
             await interaction.response.send_message("Choose a quote:", view=view, ephemeral=True)
-        else:
-            # just send a random quote (either not a booster or no user specified)
-            print("Randomized quote...")
-            author_id = quote["msg_author_id"]
-            author = await self.get_display_name(interaction.guild, author_id)
-            print(author)
-            if ping:
-                await interaction.response.send_message(f'"{quote["content"]}" — <@{author_id}>')
-                if not is_valid_user:
-                    await set_cooldown(interaction)
-                    return
-            await interaction.response.send_message(f'"{quote["content"]}" — {author}')
-            if not is_valid_user:
-                await set_cooldown(interaction)
 
     @app_commands.command(name="vote", description="Once a day, vote for a flavor on the tierlist!")
     async def vote(self, interaction: discord.Interaction, flavor: str, score: app_commands.Range[int, 1, 10]):
