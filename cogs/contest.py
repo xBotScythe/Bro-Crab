@@ -148,7 +148,7 @@ class Contest(commands.Cog):
         if top_entry is None:
             await interaction.response.send_message("No released designs have vote data yet.", ephemeral=True)
             return
-        if top_entry and win_channel:
+        if top_entry:
             winner_member = interaction.guild.get_member(top_entry["author_id"])
             win_embed = discord.Embed(
                 title=f"Contest Winner: {top_entry['flavor_name']}",
@@ -159,7 +159,19 @@ class Contest(commands.Cog):
             if winner_member:
                 win_embed.add_field(name="Submitted By", value=winner_member.mention)
             win_embed.set_image(url=top_entry["url"])
-            await win_channel.send(embed=win_embed)
+            destinations = []
+            if win_channel:
+                destinations.append(win_channel)
+            if contest_channel and contest_channel not in destinations:
+                destinations.append(contest_channel)
+            if not destinations:
+                await interaction.response.send_message(
+                    "Could not announce winner: no destination channel configured.",
+                    ephemeral=True,
+                )
+                return
+            for channel in destinations:
+                await channel.send(embed=win_embed)
         grace_until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         await cm.mark_contest_finished(interaction.guild_id, grace_until)
         if contest_channel:
