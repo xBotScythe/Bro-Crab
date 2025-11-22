@@ -227,6 +227,23 @@ class Contest(commands.Cog):
             await contest_channel.send("Contest ended. This channel will archive in ~24 hours.")
         await interaction.response.send_message("Contest ended and winner announced.", ephemeral=True)
 
+    @app_commands.command(name="contestarchive", description="Manually archive the current contest channel.")
+    async def contestarchive(self, interaction: discord.Interaction):
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Missing permissions.", ephemeral=True)
+            return
+        contest = await cm.load_contest(interaction.guild_id)
+        channel = await self._get_channel(contest.get("channel_id"))
+        if not channel:
+            await interaction.response.send_message("Contest channel not configured.", ephemeral=True)
+            return
+        archived = await self._archive_channel(interaction.guild, channel, contest)
+        await cm.end_contest(interaction.guild_id)
+        if archived:
+            await interaction.response.send_message("Contest channel archived.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Failed to archive channel.", ephemeral=True)
+
     @tasks.loop(minutes=2)
     async def _archive_task(self):
         # background loop watches contest end dates and archives when expired
@@ -237,19 +254,24 @@ class Contest(commands.Cog):
                 continue
             channel_id = contest.get("channel_id")
             channel = guild.get_channel(channel_id) if channel_id else None
-            archive_category = guild.get_channel(cm.CONTEST_CATEGORY_ARCHIVE)
-            new_name = f"contest-{contest.get('round', 1)}"
-            if channel and isinstance(channel, discord.TextChannel):
-                try:
-                    await channel.edit(name=new_name, category=archive_category)
-                except discord.HTTPException:
-                    pass
+            await self._archive_channel(guild, channel, contest)
             await cm.end_contest(guild.id)
 
     @_archive_task.before_loop
     async def before_archive(self):
         # ensure bot ready before loop tries to touch guilds
         await self.bot.wait_until_ready()
+
+    async def _archive_channel(self, guild: discord.Guild, channel: Optional[discord.TextChannel], contest: dict):
+        archive_category = guild.get_channel(cm.CONTEST_CATEGORY_ARCHIVE)
+        new_name = f"contest-{contest.get('round', 1)}"
+        if channel and isinstance(channel, discord.TextChannel):
+            try:
+                await channel.edit(name=new_name, category=archive_category)
+                return True
+            except discord.HTTPException:
+                return False
+        return False
 
 
 async def setup(bot):
