@@ -12,6 +12,7 @@ from discord.ext import commands
 
 from utils.admin_manager import check_admin_status
 from utils.json_manager import load_json_async, write_json_async
+from utils.dew_map_manager import _connect as map_connect, init_db as init_map_db
 
 USER_DATA_FILE = "data/user_data.json"
 SERVER_DATA_FILE = "data/server_data.json"
@@ -230,6 +231,51 @@ class Admin(commands.Cog):
         await write_json_async(data, SERVER_DATA_FILE)
         await interaction.followup.send(f"{member.mention} will now be automatically boomered on join.", ephemeral=True)
 
+    @app_commands.command(name="listdewfinds", description="List recent Dew map entries (admin only).")
+    async def listdewfnds(self, interaction: discord.Interaction, limit: app_commands.Range[int, 1, 50] = 20):
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message(
+                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        init_map_db()
+        entries = []
+        with map_connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, flavor, size, location_name, address, latitude, longitude, image_url, time_zone, created_at, submitted_by
+                FROM finds
+                ORDER BY datetime(created_at) DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            entries = cur.fetchall()
+        if not entries:
+            await interaction.followup.send("No finds logged yet.", ephemeral=True)
+            return
+        chunks = []
+        for row in entries:
+            chunk = (
+                f"ID: `{row['id']}`\n"
+                f"Flavor: {row['flavor']} — {row['size']}\n"
+                f"Location: {row['location_name']} ({row['address']})\n"
+                f"Coords: {round(row['latitude'], 3)}, {round(row['longitude'], 3)} | TZ: {row['time_zone'] or 'N/A'}\n"
+                f"Image: {row['image_url'] or 'none'}\n"
+                f"Submitted: {row['created_at']} by {row['submitted_by'] or 'unknown'}"
+            )
+            chunks.append(chunk)
+        message = "\n\n".join(chunks)
+        if len(message) > 1900:
+            await interaction.followup.send(
+                "Too many entries to display; reduce the limit or check the database file directly.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(message, ephemeral=True)
+
     async def _perform_boomer_start(
         self,
         guild: Optional[discord.Guild],
@@ -301,18 +347,6 @@ class Admin(commands.Cog):
             )
 
         if stored_payload is None:
-            fallback_channel = resolved_channel_id or (interaction.channel.id if interaction.channel else None)
-            if fallback_channel:
-                success, message = await self._archive_channel_by_id(guild, fallback_channel)
-                if success:
-                    await interaction.followup.send(
-                        "No stored roles were found, but the provided channel was archived.",
-                        ephemeral=True,
-                    )
-                    return
-                if message:
-                    await interaction.followup.send(message, ephemeral=True)
-                    return
             await interaction.followup.send(
                 "No active boomer sessions were located. Specify a member or channel tied to an existing session.",
                 ephemeral=True,
@@ -351,7 +385,10 @@ class Admin(commands.Cog):
             target = f"<@{resolved_user_id}>" if resolved_user_id else "the recorded member"
             summary = f"No member supplied; skipped role restoration for {target}."
 
-        archive_target = channel_id or (channel.id if channel else None) or (interaction.channel.id if interaction.channel else None)
+        archive_target = channel.id if channel else None
+        if archive_target is None:
+            await interaction.followup.send("Please specify the Lightning channel to archive with /endboomer.", ephemeral=True)
+            return
         success, message = await self._archive_channel_by_id(guild, archive_target)
         if not success and message:
             await interaction.followup.send(message, ephemeral=True)

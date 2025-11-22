@@ -60,6 +60,7 @@ HELP_PAGES = [
             ("/assignrolebyid", "give a user a role using its ID"),
             ("/addavailabledew", "add flavors to the bingo board pool"),
             ("/addautoboomer", "auto-boomer someone whenever they join"),
+            ("/listdewfnds", "list Dew map submissions with details"),
             ("/buildtierlist", "rebuild server tier list"),
             ("/cleartierlistdata", "wipe tier data"),
             ("/reload", "reload every cog"),
