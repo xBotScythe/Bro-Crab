@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -10,10 +11,12 @@ from utils.admin_manager import check_admin_status
 
 CONTEST_REVIEW_CHANNEL_ID = int(os.getenv("CONTEST_REVIEW_CHANNEL_ID", "0") or 0)
 CONTEST_DESIGN_CHANNEL_ID = int(os.getenv("CONTEST_DESIGN_CHANNEL_ID", "0") or 0)
+CONTEST_WIN_CHANNEL_ID = int(os.getenv("CONTEST_WIN_CHANNEL_ID", "0") or 0)
 # contest cog: handles idea submissions, votes, and design releases
 
 
 class IdeaReviewView(discord.ui.View):
+    # small approval ui that insert mods click accept/deny
     def __init__(self, cog, guild_id, submitter_id, idea_name):
         super().__init__(timeout=None)
         self.cog = cog
@@ -49,6 +52,7 @@ class IdeaReviewView(discord.ui.View):
 
 
 class Contest(commands.Cog):
+    # contest cog: lets users submit ideas, admins moderate, background archiving
     def __init__(self, bot):
         self.bot = bot
         self._archive_task.start()
@@ -57,6 +61,7 @@ class Contest(commands.Cog):
         self._archive_task.cancel()
 
     async def _get_channel(self, channel_id):
+        # helper resolves channel/thread by id with fetch fallback
         if not channel_id:
             return None
         channel = self.bot.get_channel(channel_id)
@@ -69,6 +74,10 @@ class Contest(commands.Cog):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
         return None
+
+    async def _get_win_channel(self):
+        # resolves contest win announcement channel if configured
+        return await self._get_channel(CONTEST_WIN_CHANNEL_ID)
 
     @app_commands.command(name="submitidea", description="Submit a flavor idea for the current contest.")
     async def submitidea(self, interaction: discord.Interaction, idea: str):
@@ -134,20 +143,29 @@ class Contest(commands.Cog):
         await interaction.response.send_message("Design submitted!", ephemeral=True)
 
     @app_commands.command(name="startcontest", description="Start a contest with a message and end date.")
-    async def startcontest(self, interaction: discord.Interaction, message: str, end_date: str):
+    @app_commands.describe(
+        message="announcement / flavor concept",
+        end_date="ISO timestamp (YYYY-MM-DD or full) — defaults to 4 days from now",
+    )
+    async def startcontest(self, interaction: discord.Interaction, message: str, channel: discord.TextChannel, end_date: Optional[str] = None):
         # admin starts a contest window and moves queued ideas live
         if not await check_admin_status(self.bot, interaction):
             await interaction.response.send_message("Missing permissions.", ephemeral=True)
             return
-        try:
-            end_dt = datetime.fromisoformat(end_date)
-        except ValueError:
-            await interaction.response.send_message("Use ISO date format YYYY-MM-DD or full timestamp.", ephemeral=True)
-            return
-        await cm.start_contest(interaction.guild_id, message, end_dt.isoformat(), interaction.channel_id)
+        if end_date:
+            try:
+                end_dt = datetime.fromisoformat(end_date)
+            except ValueError:
+                await interaction.response.send_message("Use ISO date format YYYY-MM-DD or full timestamp.", ephemeral=True)
+                return
+        else:
+            end_dt = datetime.now() + timedelta(days=4)
+        await cm.start_contest(interaction.guild_id, message, end_dt.isoformat(), channel.id)
         await cm.move_queued_ideas(interaction.guild_id)
         embed = discord.Embed(title="Contest Started", description=message, color=discord.Color.green())
-        embed.add_field(name="End Date", value=end_dt.isoformat())
+        ts = int(end_dt.timestamp())
+        embed.add_field(name="End Date", value=f"<t:{ts}:F> — <t:{ts}:R>")
+        embed.add_field(name="Contest Channel", value=channel.mention)
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="releasedewsigns", description="Publish queued designs to the showcase channel.")
@@ -160,6 +178,7 @@ class Contest(commands.Cog):
         if design_channel is None:
             await interaction.response.send_message("Design showcase channel not configured.", ephemeral=True)
             return
+        contest = await cm.load_contest(interaction.guild_id)
         queue = await cm.get_design_queue(interaction.guild_id)
         if not queue:
             await interaction.response.send_message("No designs to release.", ephemeral=True)
@@ -167,8 +186,9 @@ class Contest(commands.Cog):
         queue = await cm.clear_design_queue(interaction.guild_id)
         for entry in queue:
             author = interaction.guild.get_member(entry["author_id"])
+            concept_title = contest.get("announcement_message") or "Contest Design"
             embed = discord.Embed(
-                title="Contest Design",
+                title=concept_title,
                 description=f"Submitted by {author.mention if author else entry['author_id']}",
                 color=discord.Color.blurple(),
             )
@@ -177,29 +197,58 @@ class Contest(commands.Cog):
             await message.add_reaction("\u2B06\uFE0F")
         await interaction.response.send_message("Designs released!", ephemeral=True)
 
+    @app_commands.command(name="endcontest", description="End the current contest early and announce a winner.")
+    async def endcontest(self, interaction: discord.Interaction):
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message("Missing permissions.", ephemeral=True)
+            return
+        contest = await cm.load_contest(interaction.guild_id)
+        if not contest["active"]:
+            await interaction.response.send_message("No active contest to end.", ephemeral=True)
+            return
+        top_idea = await cm.get_top_idea(interaction.guild_id)
+        win_channel = await self._get_win_channel()
+        contest_channel = await self._get_channel(contest.get("channel_id"))
+        if top_idea and win_channel:
+            winner_member = interaction.guild.get_member(top_idea["submitted_by"])
+            win_embed = discord.Embed(
+                title="Contest Winner",
+                description=contest.get("announcement_message") or "Contest Results",
+                color=discord.Color.gold(),
+            )
+            win_embed.add_field(name="Winning Idea", value=top_idea["name"], inline=False)
+            win_embed.add_field(name="Votes", value=str(top_idea.get("votes", 0)))
+            if winner_member:
+                win_embed.add_field(name="Submitted By", value=winner_member.mention)
+            await win_channel.send(embed=win_embed)
+        grace_until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        await cm.mark_contest_finished(interaction.guild_id, grace_until)
+        if contest_channel:
+            await contest_channel.send("Contest ended. This channel will archive in ~24 hours.")
+        await interaction.response.send_message("Contest ended and winner announced.", ephemeral=True)
+
     @tasks.loop(minutes=2)
     async def _archive_task(self):
+        # background loop watches contest end dates and archives when expired
         await self.bot.wait_until_ready()
         for guild in self.bot.guilds:
             contest = await cm.load_contest(guild.id)
             if not await cm.needs_archive(contest):
                 continue
             channel_id = contest.get("channel_id")
-            if not channel_id:
-                continue
-            channel = guild.get_channel(channel_id)
-            if not isinstance(channel, discord.TextChannel):
-                continue
+            channel = guild.get_channel(channel_id) if channel_id else None
             archive_category = guild.get_channel(cm.CONTEST_CATEGORY_ARCHIVE)
             new_name = f"contest-{contest.get('round', 1)}"
-            try:
-                await channel.edit(name=new_name, category=archive_category)
-            except discord.HTTPException:
-                pass
+            if channel and isinstance(channel, discord.TextChannel):
+                try:
+                    await channel.edit(name=new_name, category=archive_category)
+                except discord.HTTPException:
+                    pass
             await cm.end_contest(guild.id)
 
     @_archive_task.before_loop
     async def before_archive(self):
+        # ensure bot ready before loop tries to touch guilds
         await self.bot.wait_until_ready()
 
 
