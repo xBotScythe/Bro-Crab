@@ -8,6 +8,7 @@ from discord.ext import commands
 from discord.ui import View, Select
 import random, asyncio, json, os
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from utils.booster_manager import check_boost_status
 from utils.quote_manager import load_quotes
 from utils.vote_manager import load_votes, update_tierlist_message, get_votes_from_user_data
@@ -69,6 +70,17 @@ class Games(commands.Cog):
             return f"User {user_id}"
         except discord.HTTPException:
             return f"User {user_id}"
+
+    def _parse_user_reference(self, value: Optional[str]) -> Optional[int]:
+        """Resolve a user ID from a raw slash command input."""
+        if not value:
+            return None
+        cleaned = value.strip()
+        if cleaned.startswith("<@") and cleaned.endswith(">"):
+            cleaned = cleaned[2:-1]
+            if cleaned.startswith("!"):
+                cleaned = cleaned[1:]
+        return int(cleaned) if cleaned.isdigit() else None
         
     # autocomplete callback for flavor choices
     async def flavor_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -148,7 +160,18 @@ class Games(commands.Cog):
             await set_cooldown(interaction)
 
     @app_commands.command(name="recall", description="Pull a random memory (or any user's if you're cool)")
-    async def recall(self, interaction: discord.Interaction, user: discord.Member = None, ping: bool = False):
+    @app_commands.describe(
+        user="Server member to filter by",
+        target="User ID or mention (use for people who left/banned)",
+        ping="Mention the saved quote's author in the reply",
+    )
+    async def recall(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member = None,
+        target: Optional[str] = None,
+        ping: bool = False,
+    ):
         # check if user is allowed to use this command (booster check)
         COOLDOWN_TIME = 600 # 10 minutes
         is_valid_user = await check_boost_status(self.bot, interaction)
@@ -159,25 +182,49 @@ class Games(commands.Cog):
         quote = {}
         data = await load_quotes()  # load all saved quotes
         if not data:
-            # no quotes found, tell user how to save one
-            await interaction.response.send_message("No quotes available. Try saving some by selecting a message, going to Apps, and then 'Save Quote!'")
+            await interaction.response.send_message(
+                "No quotes available. Try saving some by selecting a message, going to Apps, and then 'Save Quote!'"
+            )
             return
-        randomized = False
-        recall_data = data[str(interaction.guild_id)][str(interaction.user.id)]["recalls"]
-        # if user isn't valid or didn't specify a user, just pick a random quote from their own recalls
-        if(not is_valid_user or user is None):
+
+        guild_data = data.get(str(interaction.guild_id)) or {}
+        user_data = guild_data.get(str(interaction.user.id)) or {}
+        recall_data = user_data.get("recalls", [])
+        if not recall_data:
+            await interaction.response.send_message(
+                "You haven't saved any quotes yet. Save one by selecting a message and using 'Save Quote!'"
+            )
+            return
+
+        selected_author_id = None
+        if is_valid_user:
+            if user is not None:
+                selected_author_id = str(user.id)
+            elif target:
+                parsed_id = self._parse_user_reference(target)
+                if parsed_id is None:
+                    await interaction.response.send_message(
+                        "Couldn't figure out which user you meant. Provide a numeric ID or mention.",
+                        ephemeral=True,
+                    )
+                    return
+                selected_author_id = str(parsed_id)
+
+        randomized = selected_author_id is None
+        if randomized:
             quote = random.choice(recall_data)
-            randomized = True
-        if(randomized == False):
-            # user is valid and specified a user, so let them pick from a list of that user's quotes
-            print("Selected quote...")
-            filtered_recall = [q for q in recall_data if str(q.get("msg_author_id")) == str(user.id)]
+        else:
+            filtered_recall = [q for q in recall_data if str(q.get("msg_author_id")) == selected_author_id]
+            if not filtered_recall:
+                await interaction.response.send_message("No saved quotes found for that user.", ephemeral=True)
+                return
+            display_name = await self.get_display_name(interaction.guild, int(selected_author_id))
             options = []
-            for q in filtered_recall[:25]:  # discord only allows 25 options in a select
-                author = interaction.guild.get_member(int(q["msg_author_id"]))
-                author_name = author.display_name if author else "Unknown"
-                label = f'{author_name}: {q["content"][:50]}'  # show author and first 50 chars of quote
-                options.append(SelectOption(label=label, value=q["message_id"]))
+            for idx, q in enumerate(filtered_recall[:25], start=1):  # discord only allows 25 options in a select
+                preview = (q.get("content") or "[Attachment]").replace("\n", " ")
+                option_label = f"{display_name} #{idx}"[:100]
+                option_desc = (preview[:100] or "Saved quote")
+                options.append(SelectOption(label=option_label, description=option_desc, value=q["message_id"]))
 
             # create select menu for user to pick a quote
             select = Select(placeholder="Pick a quote...", options=options, min_values=1, max_values=1)
@@ -210,7 +257,7 @@ class Games(commands.Cog):
                     return
             await interaction.response.send_message(f'"{quote["content"]}" — {author}')
             if not is_valid_user:
-                await set_cooldown(interaction)  
+                await set_cooldown(interaction)
 
     @app_commands.command(name="vote", description="Once a day, vote for a flavor on the tierlist!")
     async def vote(self, interaction: discord.Interaction, flavor: str, score: app_commands.Range[int, 1, 10]):
