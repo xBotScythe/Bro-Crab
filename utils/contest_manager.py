@@ -1,7 +1,5 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-
 from utils.json_manager import load_json_async, write_json_async
 
 SERVER_FILE = "data/server_data.json"
@@ -33,8 +31,6 @@ async def _get_contest_entry(server_data, guild_id):
             "end_at": None,
             "channel_id": None,
             "announcement_message": "",
-            "ideas": [],
-            "idea_queue": [],
             "design_queue": [],
             "released_designs": [],
             "round": 1,
@@ -59,55 +55,7 @@ async def save_contest(guild_id, contest_entry):
     await _write_server_data(data)
 
 
-async def add_idea(guild_id, idea_name, user_id, active):
-    # add idea to active list or queue depending on contest state
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    target_list = contest["ideas"] if active else contest["idea_queue"]
-
-    if any(idea["name"].lower() == idea_name.lower() for idea in target_list):
-        raise ValueError("idea already exists")
-
-    entry = {
-        "name": idea_name,
-        "submitted_by": user_id,
-        "votes": 0,
-        "voters": [],
-        "status": "pending" if not active else "active",
-    }
-
-    target_list.append(entry)
-    await _write_server_data(data)
-    return entry
-
-
-async def move_queued_ideas(guild_id):
-    # promote queued ideas when contest goes live
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    for idea in contest["idea_queue"]:
-        idea["status"] = "active"
-        contest["ideas"].append(idea)
-    contest["idea_queue"] = []
-    await _write_server_data(data)
-
-
-async def vote_for_idea(guild_id, idea_name, user_id):
-    # increment vote count if user hasn't voted yet
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    for idea in contest["ideas"]:
-        if idea["name"].lower() == idea_name.lower():
-            if user_id in idea["voters"]:
-                raise ValueError("already voted on this idea")
-            idea["voters"].append(user_id)
-            idea["votes"] += 1
-            await _write_server_data(data)
-            return idea
-    raise ValueError("idea not found in active contest")
-
-
-async def add_design_submission(guild_id, author_id, attachment_url):
+async def add_design_submission(guild_id, author_id, flavor_name, attachment_url):
     # enqueue a design submission for later release
     data = await _load_server_data()
     contest = await _get_contest_entry(data, guild_id)
@@ -116,7 +64,12 @@ async def add_design_submission(guild_id, author_id, attachment_url):
     if any(design["author_id"] == author_id for design in contest["design_queue"]):
         raise ValueError("you already submitted a design for this contest")
 
-    entry = {"author_id": author_id, "url": attachment_url, "votes": 0}
+    entry = {
+        "author_id": author_id,
+        "flavor_name": flavor_name,
+        "url": attachment_url,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+    }
     contest["design_queue"].append(entry)
     await _write_server_data(data)
     return entry
@@ -130,14 +83,28 @@ async def get_design_queue(guild_id):
 
 
 async def clear_design_queue(guild_id):
-    # move pending designs to released bucket
+    # pop pending designs for release
     data = await _load_server_data()
     contest = await _get_contest_entry(data, guild_id)
-    queue = contest["design_queue"]
-    contest["released_designs"].extend(queue)
+    queue = list(contest["design_queue"])
     contest["design_queue"] = []
     await _write_server_data(data)
     return queue
+
+
+async def record_released_design(guild_id, entry):
+    # store released design metadata for later winner calc
+    data = await _load_server_data()
+    contest = await _get_contest_entry(data, guild_id)
+    contest["released_designs"].append(entry)
+    await _write_server_data(data)
+
+
+async def get_released_designs(guild_id):
+    # return released designs metadata
+    data = await _load_server_data()
+    contest = await _get_contest_entry(data, guild_id)
+    return contest["released_designs"]
 
 
 async def start_contest(guild_id, announcement_message, end_at_iso, channel_id):
@@ -157,8 +124,8 @@ async def end_contest(guild_id):
     data = await _load_server_data()
     contest = await _get_contest_entry(data, guild_id)
     contest["active"] = False
-    contest["ideas"] = []
     contest["design_queue"] = []
+    contest["released_designs"] = []
     contest["end_at"] = None
     contest["channel_id"] = None
     contest["grace_until"] = None
@@ -173,15 +140,6 @@ async def mark_contest_finished(guild_id, grace_until_iso):
     contest["active"] = False
     contest["grace_until"] = grace_until_iso
     await _write_server_data(data)
-
-
-async def get_top_idea(guild_id):
-    # return idea with most votes (ties fall to earliest)
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    if not contest["ideas"]:
-        return None
-    return max(contest["ideas"], key=lambda idea: idea.get("votes", 0))
 
 
 async def needs_archive(contest_entry):
@@ -203,16 +161,3 @@ async def needs_archive(contest_entry):
         return datetime.now(timezone.utc) >= end_time
     return False
 
-
-async def list_active_ideas(guild_id):
-    # return copy of active ideas
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    return [idea for idea in contest["ideas"]]
-
-
-async def contest_is_active(guild_id):
-    # simple bool for slash commands
-    data = await _load_server_data()
-    contest = await _get_contest_entry(data, guild_id)
-    return contest["active"]

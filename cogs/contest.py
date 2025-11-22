@@ -9,50 +9,11 @@ from discord.ext import commands, tasks
 from utils import contest_manager as cm
 from utils.admin_manager import check_admin_status
 
-CONTEST_REVIEW_CHANNEL_ID = int(os.getenv("CONTEST_REVIEW_CHANNEL_ID", "0") or 0)
 CONTEST_DESIGN_CHANNEL_ID = int(os.getenv("CONTEST_DESIGN_CHANNEL_ID", "0") or 0)
 CONTEST_WIN_CHANNEL_ID = int(os.getenv("CONTEST_WIN_CHANNEL_ID", "0") or 0)
-# contest cog: handles idea submissions, votes, and design releases
-
-
-class IdeaReviewView(discord.ui.View):
-    # small approval ui that insert mods click accept/deny
-    def __init__(self, cog, guild_id, submitter_id, idea_name):
-        super().__init__(timeout=None)
-        self.cog = cog
-        self.guild_id = guild_id
-        self.submitter_id = submitter_id
-        self.idea_name = idea_name
-
-    async def interaction_check(self, interaction: discord.Interaction):
-        # only admins can approve/deny contest ideas
-        if not await check_admin_status(self.cog.bot, interaction):
-            await interaction.response.send_message("You can't moderate contests.", ephemeral=True)
-            return False
-        return True
-
-    async def _finalize(self, interaction, text):
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(content=text, view=self)
-
-    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
-    async def accept(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        contest = await cm.load_contest(self.guild_id)
-        try:
-            await cm.add_idea(self.guild_id, self.idea_name, self.submitter_id, contest["active"])
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        await self._finalize(interaction, f"Accepted idea '{self.idea_name}'.")
-
-    @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
-    async def deny(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        await self._finalize(interaction, f"Denied idea '{self.idea_name}'.")
-
 
 class Contest(commands.Cog):
-    # contest cog: lets users submit ideas, admins moderate, background archiving
+    # contest cog: lets users submit dewsign concepts, admins release + archive
     def __init__(self, bot):
         self.bot = bot
         self._archive_task.start()
@@ -79,56 +40,10 @@ class Contest(commands.Cog):
         # resolves contest win announcement channel if configured
         return await self._get_channel(CONTEST_WIN_CHANNEL_ID)
 
-    @app_commands.command(name="submitidea", description="Submit a flavor idea for the current contest.")
-    async def submitidea(self, interaction: discord.Interaction, idea: str):
-        # users submit an idea; mods review via buttons in review channel
-        if interaction.guild is None:
-            await interaction.response.send_message("Guild only command.", ephemeral=True)
-            return
-        review_channel = await self._get_channel(CONTEST_REVIEW_CHANNEL_ID)
-        if review_channel is None:
-            await interaction.response.send_message("Review channel not configured.", ephemeral=True)
-            return
-
-        contest = await cm.load_contest(interaction.guild_id)
-        view = IdeaReviewView(self, interaction.guild_id, interaction.user.id, idea)
-        embed = discord.Embed(title="Contest Idea", description=idea, color=discord.Color.yellow())
-        embed.add_field(name="Submitted By", value=interaction.user.mention)
-        embed.add_field(name="Contest Active", value="yes" if contest["active"] else "no")
-        await review_channel.send(embed=embed, view=view)
-        await interaction.response.send_message(
-            "idea submitted for review." + (" contests currently inactive, will be queued." if not contest["active"] else ""),
-            ephemeral=True,
-        )
-
-    @app_commands.command(name="voteidea", description="Vote for a contest idea.")
-    @app_commands.describe(idea="Choose from active ideas")
-    async def voteidea(self, interaction: discord.Interaction, idea: str):
-        # users vote for active ideas, scoped to contest state
-        if interaction.guild is None:
-            await interaction.response.send_message("Guild only command.", ephemeral=True)
-            return
-        try:
-            result = await cm.vote_for_idea(interaction.guild_id, idea, interaction.user.id)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        await interaction.response.send_message(
-            f"You voted for **{result['name']}**. ({result['votes']} total)",
-            ephemeral=True,
-        )
-
-    @voteidea.autocomplete("idea")
-    async def voteidea_autocomplete(self, interaction: discord.Interaction, current: str):
-        if interaction.guild is None:
-            return []
-        ideas = await cm.list_active_ideas(interaction.guild_id)
-        matches = [idea for idea in ideas if current.lower() in idea["name"].lower()]
-        return [app_commands.Choice(name=idea["name"], value=idea["name"]) for idea in matches[:25]]
-
-    @app_commands.command(name="dewsignsubmit", description="Submit a design for the current contest.")
-    async def dewsignsubmit(self, interaction: discord.Interaction, image: discord.Attachment):
-        # design submitter uploads an image; queued for release later
+    @app_commands.command(name="dewsignsubmit", description="Submit a dewsign flavor concept to the contest queue.")
+    @app_commands.describe(flavor_name="name of your creation", image="image attachment of your design")
+    async def dewsignsubmit(self, interaction: discord.Interaction, flavor_name: str, image: discord.Attachment):
+        # design submitter uploads an image tied to a flavor name
         if interaction.guild is None:
             await interaction.response.send_message("Guild only command.", ephemeral=True)
             return
@@ -136,11 +51,11 @@ class Contest(commands.Cog):
             await interaction.response.send_message("Please upload an image file.", ephemeral=True)
             return
         try:
-            await cm.add_design_submission(interaction.guild_id, interaction.user.id, image.url)
+            await cm.add_design_submission(interaction.guild_id, interaction.user.id, flavor_name, image.url)
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-        await interaction.response.send_message("Design submitted!", ephemeral=True)
+        await interaction.response.send_message("dewsign submitted!", ephemeral=True)
 
     @app_commands.command(name="startcontest", description="Start a contest with a message and end date.")
     @app_commands.describe(
@@ -148,7 +63,7 @@ class Contest(commands.Cog):
         end_date="ISO timestamp (YYYY-MM-DD or full) — defaults to 4 days from now",
     )
     async def startcontest(self, interaction: discord.Interaction, message: str, channel: discord.TextChannel, end_date: Optional[str] = None):
-        # admin starts a contest window and moves queued ideas live
+        # admin starts a contest window for dewsign submissions
         if not await check_admin_status(self.bot, interaction):
             await interaction.response.send_message("Missing permissions.", ephemeral=True)
             return
@@ -161,7 +76,6 @@ class Contest(commands.Cog):
         else:
             end_dt = datetime.now() + timedelta(days=4)
         await cm.start_contest(interaction.guild_id, message, end_dt.isoformat(), channel.id)
-        await cm.move_queued_ideas(interaction.guild_id)
         embed = discord.Embed(title="Contest Started", description=message, color=discord.Color.green())
         ts = int(end_dt.timestamp())
         embed.add_field(name="End Date", value=f"<t:{ts}:F> — <t:{ts}:R>")
@@ -178,7 +92,6 @@ class Contest(commands.Cog):
         if design_channel is None:
             await interaction.response.send_message("Design showcase channel not configured.", ephemeral=True)
             return
-        contest = await cm.load_contest(interaction.guild_id)
         queue = await cm.get_design_queue(interaction.guild_id)
         if not queue:
             await interaction.response.send_message("No designs to release.", ephemeral=True)
@@ -186,15 +99,25 @@ class Contest(commands.Cog):
         queue = await cm.clear_design_queue(interaction.guild_id)
         for entry in queue:
             author = interaction.guild.get_member(entry["author_id"])
-            concept_title = contest.get("announcement_message") or "Contest Design"
+            concept_title = entry["flavor_name"]
             embed = discord.Embed(
                 title=concept_title,
-                description=f"Submitted by {author.mention if author else entry['author_id']}",
+                description=f"submitted by {author.mention if author else entry['author_id']}",
                 color=discord.Color.blurple(),
             )
             embed.set_image(url=entry["url"])
             message = await design_channel.send(embed=embed)
             await message.add_reaction("\u2B06\uFE0F")
+            await cm.record_released_design(
+                interaction.guild_id,
+                {
+                    "author_id": entry["author_id"],
+                    "flavor_name": entry["flavor_name"],
+                    "url": entry["url"],
+                    "message_id": message.id,
+                    "channel_id": design_channel.id,
+                },
+            )
         await interaction.response.send_message("Designs released!", ephemeral=True)
 
     @app_commands.command(name="endcontest", description="End the current contest early and announce a winner.")
@@ -206,20 +129,30 @@ class Contest(commands.Cog):
         if not contest["active"]:
             await interaction.response.send_message("No active contest to end.", ephemeral=True)
             return
-        top_idea = await cm.get_top_idea(interaction.guild_id)
         win_channel = await self._get_win_channel()
         contest_channel = await self._get_channel(contest.get("channel_id"))
-        if top_idea and win_channel:
-            winner_member = interaction.guild.get_member(top_idea["submitted_by"])
+        designs = await cm.get_released_designs(interaction.guild_id)
+        if not designs:
+            await interaction.response.send_message("No released designs to score.", ephemeral=True)
+            return
+        top_entry = None
+        top_votes = -1
+        for design in designs:
+            votes = await self._count_design_votes(design)
+            if votes > top_votes:
+                top_entry = design
+                top_votes = votes
+        if top_entry and win_channel:
+            winner_member = interaction.guild.get_member(top_entry["author_id"])
             win_embed = discord.Embed(
-                title="Contest Winner",
-                description=contest.get("announcement_message") or "Contest Results",
+                title=f"Contest Winner: {top_entry['flavor_name']}",
+                description=contest.get("announcement_message") or "contest results",
                 color=discord.Color.gold(),
             )
-            win_embed.add_field(name="Winning Idea", value=top_idea["name"], inline=False)
-            win_embed.add_field(name="Votes", value=str(top_idea.get("votes", 0)))
+            win_embed.add_field(name="Votes", value=str(max(top_votes, 0)))
             if winner_member:
                 win_embed.add_field(name="Submitted By", value=winner_member.mention)
+            win_embed.set_image(url=top_entry["url"])
             await win_channel.send(embed=win_embed)
         grace_until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         await cm.mark_contest_finished(interaction.guild_id, grace_until)
@@ -243,6 +176,20 @@ class Contest(commands.Cog):
             await interaction.response.send_message("Contest channel archived.", ephemeral=True)
         else:
             await interaction.response.send_message("Failed to archive channel.", ephemeral=True)
+
+    async def _count_design_votes(self, design_entry):
+        # fetch arrow-up reactions for released design messages
+        channel = await self._get_channel(design_entry.get("channel_id") or CONTEST_DESIGN_CHANNEL_ID)
+        if not isinstance(channel, discord.TextChannel):
+            return 0
+        try:
+            message = await channel.fetch_message(design_entry["message_id"])
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return 0
+        for reaction in message.reactions:
+            if str(reaction.emoji) == "\u2B06\uFE0F":
+                return reaction.count
+        return 0
 
     @tasks.loop(minutes=2)
     async def _archive_task(self):
