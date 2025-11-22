@@ -67,9 +67,20 @@ class Games(commands.Cog):
             member = await guild.fetch_member(user_id)
             return member.display_name
         except discord.NotFound:
-            return f"User {user_id}"
+            pass
         except discord.HTTPException:
-            return f"User {user_id}"
+            pass
+
+        try:
+            user = await self.bot.fetch_user(user_id)
+            if user:
+                return user.name
+        except discord.NotFound:
+            pass
+        except discord.HTTPException:
+            pass
+
+        return f"User {user_id}"
 
     def _parse_user_reference(self, value: Optional[str]) -> Optional[int]:
         """Resolve a user ID from a raw slash command input."""
