@@ -51,7 +51,8 @@ HELP_PAGES = [
         [
             ("/addroast", "add a roast line"),
             ("/addautoroast", "register auto reaction"),
-            ("/boomer", "start/end boomer process"),
+            ("/startboomer", "launch the boomer workflow"),
+            ("/endboomer", "archive lightning + restore roles"),
             ("/warn", "dm warning + log entry"),
             ("/settierlistchannel", "set server tier channel"),
             ("/additemtovote", "add an item to the vote list"),

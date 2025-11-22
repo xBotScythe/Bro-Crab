@@ -1,5 +1,5 @@
 import os
-from typing import Literal, List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 ARCHIVE_CATEGORY_NAME = "Lightning Archives"
@@ -160,16 +160,35 @@ class Admin(commands.Cog):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
 
-    @app_commands.command(name="boomer", description="Start or end the boomer process for a member.")
+    @app_commands.command(name="startboomer", description="Strip roles and assign the boomer role to a member.")
+    async def startboomer(self, interaction: discord.Interaction, user: discord.Member):
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used in a guild.", ephemeral=True)
+            return
+        if not await check_admin_status(self.bot, interaction):
+            await interaction.response.send_message(
+                "Sorry bro, you're not cool enough to use this. Ask a mod politely maybe?",
+                ephemeral=True,
+            )
+            return
+        if self.boomer_role_id is None and not self.default_boomer_role:
+            await interaction.response.send_message(
+                "BOOMER_ROLE_ID is not configured on the bot. Please set it in the environment.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        await self._handle_boomer_start(interaction, user)
+
+    @app_commands.command(name="endboomer", description="Restore roles (if possible) and archive the Lightning channel.")
     @app_commands.describe(
-        action="Choose 'start' to strip roles, 'end' to restore them.",
-        user="Member to act on (optional when ending).",
-        channel="Channel to archive if the member is gone."
+        user="Member to end the process for (optional if they left).",
+        channel="Lightning channel to archive if the member is gone."
     )
-    async def boomer(
+    async def endboomer(
         self,
         interaction: discord.Interaction,
-        action: Literal["start", "end"],
         user: Optional[discord.Member] = None,
         channel: Optional[discord.TextChannel] = None,
     ):
@@ -182,7 +201,7 @@ class Admin(commands.Cog):
                 ephemeral=True,
             )
             return
-        if self.boomer_role_id is None:
+        if self.boomer_role_id is None and not self.default_boomer_role:
             await interaction.response.send_message(
                 "BOOMER_ROLE_ID is not configured on the bot. Please set it in the environment.",
                 ephemeral=True,
@@ -190,10 +209,7 @@ class Admin(commands.Cog):
             return
 
         await interaction.response.defer(ephemeral=True)
-        if action == "start":
-            await self._handle_boomer_start(interaction, user)
-        else:
-            await self._handle_boomer_end(interaction, user, channel)
+        await self._handle_boomer_end(interaction, user, channel)
 
     @app_commands.command(name="addautoboomer", description="Automatically boomer a member whenever they join.")
     async def addautoboomer(self, interaction: discord.Interaction, member: discord.Member):
