@@ -40,7 +40,7 @@ class Admin(commands.Cog):
         }
         await write_json_async(data, USER_DATA_FILE)
 
-    async def _pop_stored_roles(self, guild_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    async def _pop_stored_roles(self, guild_id: int, user_id: int) :
         data = await load_json_async(USER_DATA_FILE)
         guild_entry = data.get(str(guild_id), {})
         user_entry = guild_entry.get(str(user_id), {})
@@ -84,7 +84,7 @@ class Admin(commands.Cog):
             return stored, int(user_id)
         return None, None
 
-    def _get_category(self, guild: discord.Guild, name: str) -> Optional[discord.CategoryChannel]:
+    def _get_category(self, guild: discord.Guild, name: str) :
         # find category regardless of case
         lowered = name.lower()
         for category in guild.categories:
@@ -148,7 +148,7 @@ class Admin(commands.Cog):
         await write_json_async(server_data, SERVER_DATA_FILE)
         return True, None
 
-    async def _get_warn_channel(self) -> Optional[discord.TextChannel]:
+    async def _get_warn_channel(self) :
         # resolve cross-server warn log channel
         if not self.warn_channel_id:
             return None

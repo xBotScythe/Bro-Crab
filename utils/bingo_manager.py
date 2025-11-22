@@ -29,7 +29,7 @@ async def _write_user_data(data: Dict):
     await write_json_async(data, USER_DATA_FILE)
 
 
-async def get_flavor_pool(guild_id: int) -> List[str]:
+async def get_flavor_pool(guild_id: int) :
     data = await _load_server_data()
     guild_entry = data.get(str(guild_id), {})
     flavors = guild_entry.get("available_flavors") or []

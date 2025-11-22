@@ -12,7 +12,7 @@ class Bingo(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def _render_image(self, board: dict) -> discord.File:
+    async def _render_image(self, board: dict) :
         buffer = await asyncio.to_thread(render_board, board)
         return discord.File(buffer, filename="dew_bingo.png")
 

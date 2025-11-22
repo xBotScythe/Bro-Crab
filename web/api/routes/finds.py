@@ -62,6 +62,7 @@ async def create_web_find(
 
     clean_location = clean_text(locationName)
     clean_address = clean_text(address)
+    # mirror bot moderation so web finds stay pg rated
     if contains_profanity(clean_location) or contains_profanity(clean_address):
         raise HTTPException(status_code=400, detail="invalid_text")
 
@@ -119,7 +120,7 @@ def _row_to_schema(row):
     )
 
 
-async def _save_image(upload: UploadFile) -> str:
+async def _save_image(upload: UploadFile) :
     if upload.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="unsupported_image_type")
     contents = await upload.read(MAX_IMAGE_BYTES + 1)

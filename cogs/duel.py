@@ -74,7 +74,7 @@ class DuelView(View):
         self.cog = cog
         self.duel_id = duel_id
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) :
         duel = self.cog.active_duels.get(self.duel_id)
         return duel and interaction.user.id in (duel["p1_id"], duel["p2_id"])
 
@@ -92,8 +92,8 @@ class DuelView(View):
 class Duel(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_duels = {}  # duel_id -> state
-        self.flavors = {}       # guild_id -> {flavor: stats}
+        self.active_duels = {}  # duel_id 
+        self.flavors = {}       # guild_id : stats}
 
     def load_flavors(self, guild_id: int):
         self.flavors = {}

@@ -10,13 +10,13 @@ SUITS = [
     "<:bajablastcan:1427060298510106766>",
 ]
 
-def make_deck(decks: int = 1) -> List[str]:
+def make_deck(decks: int = 1) :
     # store cards as "RANK|SUIT" so suits (which may be multi-char emojis) can be parsed reliably
     deck = [f"{r}|{s}" for r in RANKS for s in SUITS] * decks
     random.shuffle(deck)
     return deck
 
-def card_value(card: str) -> List[int]:
+def card_value(card: str) :
     # card format is "RANK|SUIT"; split on the first '|'
     rank, _ = card.split("|", 1)
     if rank in ("J","Q","K"):
@@ -25,7 +25,7 @@ def card_value(card: str) -> List[int]:
         return [1,11]
     return [int(rank)]
 
-def score_hand(cards: List[str]) -> int:
+def score_hand(cards: List[str]) :
     # compute best score <=21 or minimum otherwise
     totals = [0]
     for c in cards:
@@ -41,5 +41,5 @@ def score_hand(cards: List[str]) -> int:
         return max(valid)
     return min(totals)
 
-def is_blackjack(cards: List[str]) -> bool:
+def is_blackjack(cards: List[str]) :
     return len(cards) == 2 and (11 in sum([card_value(c) for c in cards], [])) and any(v==10 for c in cards for v in card_value(c))
